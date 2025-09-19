@@ -14,17 +14,17 @@ def create_dataset(config, preprocess, evaluate=False):
 
     train_transform = preprocess
 
-# model, _, preprocess = open_clip.create_model_and_transforms(model_name, pretrained="./checkpoints/mobileclip2_s4.pt", **model_kwargs)
-# tokenizer = open_clip.get_tokenizer(model_name)
+    # model, _, preprocess = open_clip.create_model_and_transforms(model_name, pretrained="./checkpoints/mobileclip2_s4.pt", **model_kwargs)
+    # tokenizer = open_clip.get_tokenizer(model_name)
 
-# # Model needs to be in eval mode for inference because of batchnorm layers unlike ViTs
-# model.eval()
+    # # Model needs to be in eval mode for inference because of batchnorm layers unlike ViTs
+    # model.eval()
 
-# # For inference/model exporting purposes, please reparameterize first
-# model = reparameterize_model(model)
+    # # For inference/model exporting purposes, please reparameterize first
+    # model = reparameterize_model(model)
 
-# normal_image = preprocess(Image.open("test/pict.jpg").convert("RGB")).unsqueeze(0)
-# abnoml_image = preprocess(Image.open("test/bad_pict1.jpg").convert("RGB")).unsqueeze(0)
+    # normal_image = preprocess(Image.open("test/pict.jpg").convert("RGB")).unsqueeze(0)
+    # abnoml_image = preprocess(Image.open("test/bad_pict1.jpg").convert("RGB")).unsqueeze(0)
 
     test_transform = preprocess
 

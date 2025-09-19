@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 
 from dataset.utils import pre_caption, read_json_to_list
 
-PAB_ROOT = Path(os.environ['PABROOT'])
+PAB_ROOT = Path(os.environ["PABROOT"])
 
 
 class TextMaskingGenerator:

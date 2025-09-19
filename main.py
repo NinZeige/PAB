@@ -1,11 +1,12 @@
 import torch
 import yaml
 import open_clip
-from PIL import Image
 from mobileclip.modules.common.mobileone import reparameterize_model
-
 from dataset import create_dataset, create_loader
-from evaluate import evaluate_itc
+from evaluate import evaluate_itc, mAP
+
+from rich.table import Table, Column
+from rich.console import Console
 
 
 def load_pretrained_mclip2():
@@ -17,7 +18,7 @@ def load_pretrained_mclip2():
     )
     model = reparameterize_model(model.eval())
     tokenizer = open_clip.get_tokenizer(MODEL_NAME)
-    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     model.to(dev)
 
     return model, preprocess, tokenizer
@@ -39,10 +40,17 @@ def main():
         collate_fns=[None],
     )[0]
 
-    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     sim_mat, *_ = evaluate_itc(model, test_loader, tokenizer, dev, cfg)
-    print(f"{sim_mat.shape!r}")
-    breakpoint()
+    res = mAP(sim_mat, test_loader.dataset.g_pids, test_loader.dataset.q_pids)
+
+    # Pretty Print
+    t = Table(
+        *map(lambda x: Column(x, justify="center"), ["R1", "R5", "R10", "mAP", "mINP"]),
+        title="Evaluation Result",
+    )
+    t.add_row(*map(lambda x: f"{x:.2f}%", res.values()))
+    Console().print(t)
 
 
 if __name__ == "__main__":

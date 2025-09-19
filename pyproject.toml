@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+    "ipython>=8.37.0",
     "mobileclip",
     "nltk>=3.9.1",
     "open-clip-torch",
