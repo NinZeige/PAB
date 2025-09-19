@@ -1,0 +1,20 @@
+[project]
+name = "mclip-pab"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "mobileclip",
+    "nltk>=3.9.1",
+    "open-clip-torch",
+    "rich>=14.1.0",
+]
+
+[tool.uv.sources]
+open-clip-torch = { path = "../../../clone/ml-mobileclip/open_clip" }
+mobileclip = { path = "../../../clone/ml-mobileclip" }
+
+[[tool.uv.index]]
+url = "https://pypi.tuna.tsinghua.edu.cn/simple"
+default = true
