@@ -32,13 +32,13 @@ def main():
     _, test_dataset = create_dataset(cfg, preprocess, evaluate=True)
 
     test_loader = create_loader(
-        [test_dataset],
-        [None],
-        batch_size=[cfg["batch_size_test"]],
-        num_workers=[1],
-        is_trains=[False],
-        collate_fns=[None],
-    )[0]
+        test_dataset,
+        None,
+        batch_size=cfg["batch_size_test"],
+        num_worker=1,
+        is_train=False,
+        collate_fn=None,
+    )
 
     dev = "cuda:0" if torch.cuda.is_available() else "cpu"
     sim_mat, *_ = evaluate_itc(model, test_loader, tokenizer, dev, cfg)
