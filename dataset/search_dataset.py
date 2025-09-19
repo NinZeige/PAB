@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 
 from dataset.utils import pre_caption, read_json_to_list
 
-PAB_ROOT = Path(os.environ["PABROOT"])
+PAB_ROOT = Path(os.environ['PABROOT'])
 
 
 class TextMaskingGenerator:
@@ -62,22 +62,22 @@ class TextMaskingGenerator:
 
                 if self.use_roberta:
                     while (new_st > 1) and (
-                        self.id2token[text_ids[new_st].item()][0] != "Ġ"
+                        self.id2token[text_ids[new_st].item()][0] != 'Ġ'
                     ):
                         new_st -= 1
                     while (new_end < len(text_ids)) and (
-                        self.id2token[text_ids[new_end].item()][0] != "Ġ"
+                        self.id2token[text_ids[new_end].item()][0] != 'Ġ'
                     ):
                         new_end += 1
                 else:
                     # bert, WordPiece
                     while (new_st >= 0) and self.id2token[
                         text_ids[new_st].item()
-                    ].startswith("##"):
+                    ].startswith('##'):
                         new_st -= 1
                     while (new_end < len(text_ids)) and self.id2token[
                         text_ids[new_end].item()
-                    ].startswith("##"):
+                    ].startswith('##'):
                         new_end += 1
 
                 return new_st, new_end
@@ -124,19 +124,19 @@ class search_train_dataset(Dataset):
     def __init__(self, config: dict[str | list[str]], transform):
         self.image_root = PAB_ROOT
         self.transform = transform
-        self.max_words = config["max_words"]
-        self.eda_p = config["eda_p"]
+        self.max_words = config['max_words']
+        self.eda_p = config['eda_p']
 
-        self.be_hard = config.get("be_hard", False)
-        self.be_pose_img = config.get("be_pose_img", False)
+        self.be_hard = config.get('be_hard', False)
+        self.be_pose_img = config.get('be_pose_img', False)
         print(
-            "train dataset -->    be_hard:",
+            'train dataset -->    be_hard:',
             self.be_hard,
-            "    be_pose_img:",
+            '    be_pose_img:',
             self.be_pose_img,
         )
 
-        ann_file = PAB_ROOT / config["train_file"]
+        ann_file = PAB_ROOT / config['train_file']
         self.ann = []
         for f in ann_file:
             anns = read_json_to_list(f)
@@ -146,55 +146,55 @@ class search_train_dataset(Dataset):
         self.img_ids = {}
         n = 0
         for ann in self.ann:
-            img_id = ann["image_id"]
+            img_id = ann['image_id']
             if img_id not in self.img_ids.keys():
                 self.img_ids[img_id] = n
                 n += 1
 
             if self.be_hard:
-                img_id = ann["hard_i_id"]
+                img_id = ann['hard_i_id']
                 if img_id not in self.img_ids.keys():
                     self.img_ids[img_id] = n
                     n += 1
-        print("image ids:", n)
+        print('image ids:', n)
 
     def __len__(self):
         return len(self.ann)
 
     def __getitem__(self, index):
         ann = self.ann[index]
-        image_path = os.path.join(self.image_root, ann["image"])
-        image = Image.open(image_path).convert("RGB")
+        image_path = os.path.join(self.image_root, ann['image'])
+        image = Image.open(image_path).convert('RGB')
         image = self.transform(image)
 
-        img_id = ann["image_id"]
+        img_id = ann['image_id']
 
-        cap = ann["caption"]
+        cap = ann['caption']
         caption = pre_caption(cap, self.max_words)
 
         if self.be_hard:
-            hard_caption = pre_caption(ann["hard_c"], self.max_words)
+            hard_caption = pre_caption(ann['hard_c'], self.max_words)
         else:
             hard_caption = {}
 
         caption_eda = pre_caption(cap, self.max_words, True, self.eda_p)
 
         if self.be_pose_img:
-            pose_path = os.path.join(self.image_root, "pose/" + ann["image"])
-            pose = Image.open(pose_path).convert("RGB")
+            pose_path = os.path.join(self.image_root, 'pose/' + ann['image'])
+            pose = Image.open(pose_path).convert('RGB')
             pose = self.transform(pose)
         else:
             pose = {}
 
         if self.be_hard:
-            hard_path = os.path.join(self.image_root, "train/" + ann["hard_i"])
-            hard_i = Image.open(hard_path).convert("RGB")
+            hard_path = os.path.join(self.image_root, 'train/' + ann['hard_i'])
+            hard_i = Image.open(hard_path).convert('RGB')
             hard_i = self.transform(hard_i)
             if self.be_pose_img:
                 hard_pose_path = os.path.join(
-                    self.image_root, "pose/train/" + ann["hard_i"]
+                    self.image_root, 'pose/train/' + ann['hard_i']
                 )
-                hard_i_pose = Image.open(hard_pose_path).convert("RGB")
+                hard_i_pose = Image.open(hard_pose_path).convert('RGB')
                 hard_i_pose = self.transform(hard_i_pose)
             else:
                 hard_i_pose = {}
@@ -216,40 +216,40 @@ class search_train_dataset(Dataset):
 
 class search_test_dataset(Dataset):
     def __init__(self, config, transform):
-        ann_file = PAB_ROOT / config["test_file"]
+        ann_file = PAB_ROOT / config['test_file']
         self.transform = transform
         self.image_root = PAB_ROOT
-        self.max_words = config["max_words"]
+        self.max_words = config['max_words']
 
         self.ann = read_json_to_list(ann_file)
 
-        self.be_pose_img = config.get("be_pose_img", False)
-        print("test dataset -->    be_pose_img:", self.be_pose_img)
+        self.be_pose_img = config.get('be_pose_img', False)
+        print('test dataset -->    be_pose_img:', self.be_pose_img)
 
         self.text = []
         self.image = []
         self.g_pids = []
         self.q_pids = []
         for img_id, ann in enumerate(self.ann):
-            self.g_pids.append(ann["image_id"])
-            self.image.append(ann["image"])
-            for i, caption in enumerate(ann["caption"]):
-                self.q_pids.append(ann["image_id"])
+            self.g_pids.append(ann['image_id'])
+            self.image.append(ann['image'])
+            for i, caption in enumerate(ann['caption']):
+                self.q_pids.append(ann['image_id'])
                 self.text.append(pre_caption(caption, self.max_words))
 
     def __len__(self):
         return len(self.image)
 
     def __getitem__(self, index):
-        image_path = os.path.join(self.image_root, self.ann[index]["image"])
-        image = Image.open(image_path).convert("RGB")
+        image_path = os.path.join(self.image_root, self.ann[index]['image'])
+        image = Image.open(image_path).convert('RGB')
         image = self.transform(image)
 
         if self.be_pose_img:
             pose_path = os.path.join(
-                self.image_root, "pose/" + self.ann[index]["image"]
+                self.image_root, 'pose/' + self.ann[index]['image']
             )
-            pose = Image.open(pose_path).convert("RGB")
+            pose = Image.open(pose_path).convert('RGB')
             pose = self.transform(pose)
         else:
             pose = {}

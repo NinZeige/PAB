@@ -19,3 +19,11 @@ mobileclip = { path = "../../../clone/ml-mobileclip" }
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
 default = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.13.1",
+]
+
+[tool.ruff.format]
+quote-style = "single"

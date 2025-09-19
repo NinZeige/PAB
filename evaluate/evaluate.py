@@ -13,13 +13,12 @@ def evaluate_itc(
     device: str,
     cfg: dict,
 ):
-
     texts = loader.dataset.text
     num_text = len(texts)
-    text_bs = cfg["batch_size_test_text"]
+    text_bs = cfg['batch_size_test_text']
 
     text_embeds = []
-    for i in track(range(0, num_text, text_bs), description="Encode Ft"):
+    for i in track(range(0, num_text, text_bs), description='Encode Ft'):
         text = texts[i : min(num_text, i + text_bs)]
         text_input = tokenizer(
             text,
@@ -30,7 +29,7 @@ def evaluate_itc(
     text_embeds = torch.cat(text_embeds, dim=0)
 
     image_embeds = []
-    for image, _, _ in track(loader, description="Encode Fi"):
+    for image, _, _ in track(loader, description='Encode Fi'):
         image = image.to(device)
 
         image_embed = model.encode_image(image)
@@ -73,11 +72,11 @@ def mAP(scores_t2i: torch.Tensor, g_pids, q_pids) -> dict[str, float]:
     t2i_cmc, t2i_mAP, t2i_mINP = t2i_cmc.numpy(), t2i_mAP.numpy(), t2i_mINP.numpy()
 
     eval_result = {
-        "R1": t2i_cmc[0],
-        "R5": t2i_cmc[4],
-        "R10": t2i_cmc[9],
-        "mAP": t2i_mAP,
-        "mINP": t2i_mINP,
+        'R1': t2i_cmc[0],
+        'R5': t2i_cmc[4],
+        'R10': t2i_cmc[9],
+        'mAP': t2i_mAP,
+        'mINP': t2i_mINP,
     }
 
     return eval_result
