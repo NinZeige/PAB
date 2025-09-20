@@ -205,6 +205,7 @@ class search_train_dataset(Dataset):
             'hard_i': hard_i,
             'hard_i_pose': hard_i_pose,
             'hard_caption': hard_caption,
+            'index': index,
         }
 
 

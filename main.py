@@ -8,7 +8,7 @@ from rich.console import Console
 
 from dataset import create_dataset, create_loader
 from evaluate import evaluate_itc, mAP
-from models.siglip2 import build_model, collate_func
+from models.siglip2 import build_model, make_eval_collate_fn
 
 
 def evaluate_main(cfg: dict[str, str | list[str]]):
@@ -19,7 +19,7 @@ def evaluate_main(cfg: dict[str, str | list[str]]):
     test_loader = create_loader(
         test_dataset,
         batch_size=cfg['batch_size_test'],
-        collate_fn=partial(collate_func, processor=processor),
+        collate_fn=make_eval_collate_fn(processor),
     )
 
     # Evaluation
@@ -33,6 +33,12 @@ def evaluate_main(cfg: dict[str, str | list[str]]):
     )
     t.add_row(*map(lambda x: f'{x:.2f}%', res.values()))
     Console().print(t)
+
+
+def train_main(cfg: dict[str, str | list[str]]):
+    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+
+    raise NotImplemented
 
 
 def main():

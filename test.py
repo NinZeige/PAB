@@ -51,7 +51,7 @@ class TestDataloader(unittest.TestCase):
             testset,
             batch_size=BATCH_SIZE,
             sampler=None,
-            collate_fn=partial(siglip2.collate_func, processor=processor),
+            collate_fn=siglip2.make_eval_collate_fn(processor),
         )
 
         img, idx = next(iter(loader))  # 获取数据
