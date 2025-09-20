@@ -61,12 +61,13 @@ w: 224
 load_params: False
 load_pretrained: True
 
-max_words: 77
-max_tokens: 77
+max_words: 64
+max_tokens: 64
 eda_p: 1
 erasing_p: 0.6
 
-batch_size_train: 22
+# SigLIP用大Batch的效果可能更好
+batch_size_train: 128
 batch_size_test: 22
 batch_size_test_text: 150
 batch_size_test_text: 150
@@ -84,7 +85,7 @@ skipgram_size: 3
 mask_whole_word: True
 
 optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.01, lr_mult: 2}
-schedular: {sched: step, lr: 1e-4, epochs: 15, num_warmup_steps: 500}
+scheduler: {sched: step, lr: 1e-4, epochs: 15, num_warmup_steps: 500}
 
 k_test: 128
 

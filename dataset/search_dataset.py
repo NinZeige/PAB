@@ -239,6 +239,7 @@ class search_test_dataset(Dataset):
         image_path = os.path.join(self.image_root, self.ann[index]['image'])
         image = Image.open(image_path).convert('RGB')
         image = self.transform(image)
+        caption = self.text[index]
 
         if self.be_pose_img:
             pose_path = os.path.join(
@@ -249,4 +250,4 @@ class search_test_dataset(Dataset):
         else:
             pose = {}
 
-        return {'image': image, 'pose': pose, 'index': index}
+        return {'image': image, 'pose': pose, 'index': index, 'caption': caption}

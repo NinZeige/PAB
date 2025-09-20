@@ -17,14 +17,15 @@ def build_model(device: str = 'cpu'):
     return model, processor, tokenizer
 
 
-def make_eval_collate_fn(processor: Siglip2ImageProcessorFast):
-    def collate(batch):
-        images = [b['image'] for b in batch]
-        indices = [b['index'] for b in batch]
-        images_input = processor(images, return_tensors='pt')
-        return images_input, torch.tensor(indices)
-
-    return collate
+def make_eval_collate_fn(
+    processor: Siglip2ImageProcessorFast,
+    tokenizer: GemmaTokenizer,
+    text_max_len: int = None,
+):
+    """
+    训练用的collate函数目前逻辑与评估相同，后续需要不同参数输入的时候再改动
+    """
+    return make_train_collate_fn(processor, tokenizer, text_max_len)
 
 
 def make_train_collate_fn(
@@ -32,9 +33,10 @@ def make_train_collate_fn(
     tokenizer: GemmaTokenizer,
     text_max_len: int = None,
 ):
-    '''
+    """
     训练和评估使用的collate函数的输入batch形状不同，通过键值对形式对齐
-    '''
+    """
+
     def collate(batch):
         images = [b['image'] for b in batch]
         texts = [b['caption'] for b in batch]
@@ -47,7 +49,7 @@ def make_train_collate_fn(
             max_length=text_max_len,
             return_tensors='pt',
         )
-        indices = torch.tensor([b['idx'] for b in batch], dtype=torch.long)
+        indices = torch.tensor([b['index'] for b in batch], dtype=torch.long)
         return img_inputs, txt_inputs, indices
 
     return collate

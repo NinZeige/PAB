@@ -3,49 +3,45 @@ import torch.nn.functional as F
 from transformers import Siglip2Model
 from torch.utils.data import DataLoader
 from rich.progress import track
+from rich.table import Table
+from rich.console import Console
+
+
+def evaluate_once(
+    model: Siglip2Model, loader: DataLoader, table: Table, console: Console
+):
+    model.eval()
+
+    sims, *_ = evaluate_itc(model, loader)
+    res = mAP(sims, loader.dataset.g_pids, loader.dataset.q_pids)
+
+    # Pretty Print
+    table.add_row(*map(lambda x: f'{x:.2f}%', res.values()))
+    console.print(table)
 
 
 @torch.no_grad()
 def evaluate_itc(
     model: Siglip2Model,
     loader: DataLoader,
-    tokenizer,
-    processor,
-    device: str,
-    cfg: dict,
 ):
-    texts = loader.dataset.text
-    imgs = loader.dataset.image
-    num_text = len(texts)
-    text_bs = cfg['batch_size_test_text']
+    image_features = []
+    text_features = []
+    for imgs, text, _ in track(loader, description='Encode Fi'):
+        imgs = {k: v.to(model.device) for k, v in imgs.items()}
+        text = {k: v.to(model.device) for k, v in text.items()}
+        fi_batch = model.get_image_features(**imgs)
+        ft_batch = model.get_text_features(**text)
+        image_features.append(F.normalize(fi_batch, dim=-1))
+        text_features.append(F.normalize(ft_batch, dim=-1))
 
-    text_embeds = []
-    for i in track(range(0, num_text, text_bs), description='Encode Ft'):
-        text = texts[i : min(num_text, i + text_bs)]
+    image_features = torch.cat(image_features, dim=0)
+    text_features = torch.cat(text_features, dim=0)
 
-        text_input = tokenizer(
-            text,
-            padding='max_length',
-            truncation=True,
-            max_length=64,
-            return_tensors='pt',
-        ).to(device)
-
-        text_embed = model.get_text_features(**text_input)
-        text_embeds.append(F.normalize(text_embed, dim=-1))
-    text_embeds = torch.cat(text_embeds, dim=0)
-
-    image_embeds = []
-    for imgs, _ in track(loader, description='Encode Fi'):
-        imgs = {k: v.to(device) for k, v in imgs.items()}
-        image_embed = model.get_image_features(**imgs)
-        image_embeds.append(F.normalize(image_embed, dim=-1))
-    image_embeds = torch.cat(image_embeds, dim=0)
-
-    sims_matrix = image_embeds @ text_embeds.t()
+    sims_matrix = image_features @ text_features.t()
     sims_matrix_t2i = sims_matrix.t()
 
-    return sims_matrix_t2i, image_embeds, text_embeds
+    return sims_matrix_t2i, image_features, text_features
 
 
 def mAP(scores_t2i: torch.Tensor, g_pids, q_pids) -> dict[str, float]:
