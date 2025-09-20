@@ -8,6 +8,8 @@ from transformers import (
     GemmaTokenizer,
 )
 
+from logging import info
+
 
 def build_model(device: str = 'cpu'):
     MODEL_NAME = 'google/siglip2-base-patch16-naflex'
@@ -20,8 +22,9 @@ def build_model(device: str = 'cpu'):
 
 
 def collate_func(batch, processor: Siglip2ImageProcessorFast):
-    images = [b[0] for b in batch]
-    indices = [b[2] for b in batch]
+    info(f'batch: {batch!r}')
+    images = [b['image'] for b in batch]
+    indices = [b['index'] for b in batch]
     images_input = processor(images, return_tensors='pt')
 
     return images_input, torch.tensor(indices)

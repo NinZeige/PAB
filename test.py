@@ -1,13 +1,14 @@
 import unittest
 import torch
 from pathlib import Path
+import logging
 
 MODEL_NAME = 'google/siglip2-base-patch16-naflex'
 from functools import partial
 from models import siglip2
 
 
-class test_dataloader(unittest.TestCase):
+class TestDataloader(unittest.TestCase):
     def test_infer(self):
         from PIL import Image
         import os
@@ -28,15 +29,21 @@ class test_dataloader(unittest.TestCase):
         self.assertTrue(isinstance(img_feat, torch.Tensor))
         self.assertEqual(img_feat.shape, torch.Size((1, 768)))
 
-    def test_load(self):
-        from dataset import create_dataset, create_loader
+    @staticmethod
+    def load_config() -> dict[str, str | list[str]]:
         import yaml
 
         with open('config/siglip2.yaml') as f:
             cfg = yaml.load(f, Loader=yaml.Loader)
+        return cfg
+
+    def test_load(self):
+        from dataset import create_dataset, create_loader
 
         dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
         model, processor, _ = siglip2.build_model(dev)
+
+        cfg = TestDataloader.load_config()
 
         BATCH_SIZE = 50
         _, testset = create_dataset(cfg, None, True)
@@ -56,6 +63,10 @@ class test_dataloader(unittest.TestCase):
         # 判断输出特征形状
         self.assertEqual(output.shape, torch.Size((50, 768)))
 
+    def test_train_set(self):
+        cfg = TestDataloader.load_config()
+
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.WARN)
     unittest.main()

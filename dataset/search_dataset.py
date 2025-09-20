@@ -196,16 +196,16 @@ class search_train_dataset(Dataset):
             hard_i = {}
             hard_i_pose = {}
 
-        return (
-            image,
-            caption,
-            caption_eda,
-            self.img_ids[img_id],
-            pose,
-            hard_i,
-            hard_i_pose,
-            hard_caption,
-        )
+        return {
+            'image': image,
+            'caption': caption,
+            'caption_eda': caption_eda,
+            'img_ids': self.img_ids[img_id],
+            'pose': pose,
+            'hard_i': hard_i,
+            'hard_i_pose': hard_i_pose,
+            'hard_caption': hard_caption,
+        }
 
 
 class search_test_dataset(Dataset):
@@ -224,10 +224,10 @@ class search_test_dataset(Dataset):
         self.image = []
         self.g_pids = []
         self.q_pids = []
-        for img_id, ann in enumerate(self.ann):
+        for ann in self.ann:
             self.g_pids.append(ann['image_id'])
             self.image.append(ann['image'])
-            for i, caption in enumerate(ann['caption']):
+            for caption in ann['caption']:
                 self.q_pids.append(ann['image_id'])
                 self.text.append(pre_caption(caption, self.max_words))
 
@@ -248,4 +248,4 @@ class search_test_dataset(Dataset):
         else:
             pose = {}
 
-        return image, pose, index
+        return {'image': image, 'pose': pose, 'index': index}
