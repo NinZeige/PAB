@@ -46,7 +46,7 @@ class test_dataloader(unittest.TestCase):
         from dataset import create_dataset, create_loader
         import yaml
 
-        with open('config/mobile-clip2.yaml') as f:
+        with open('config/siglip2.yaml') as f:
             cfg = yaml.load(f, Loader=yaml.Loader)
 
         model = test_dataloader.load_model()

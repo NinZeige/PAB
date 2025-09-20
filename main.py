@@ -28,7 +28,7 @@ def build_model():
 
 
 def main():
-    with open('config/mobile-clip2.yaml', 'r') as f:
+    with open('config/siglip2.yaml', 'r') as f:
         cfg = yaml.load(f.read(), yaml.Loader)
 
     model, processor, tokenizer = build_model()

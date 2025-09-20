@@ -6,6 +6,9 @@ dist/
 wheels/
 *.egg-info
 
+# ruff
+.ruff_cache/
+
 # Virtual environments
 .venv
 checkpoints

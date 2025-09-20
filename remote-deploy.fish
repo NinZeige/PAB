@@ -3,11 +3,12 @@
 set origin_path (status dirname)
 
 set -g ignore_expr '.venv/' \
-    '__py__cache/' \
+    __py__cache/ \
     '.git/' \
     'pyproject.toml' \
     'uv.lock' \
-    'checkpoints/'
+    '.ruff_cache/' \
+    checkpoints/
 
 set -g rsync_ignore_expr
 
@@ -16,9 +17,8 @@ for expr in $ignore_expr
 end
 
 if test $origin_path != (status dirname)
-    echo "Panic" >&2
+    echo Panic >&2
 end
 
 ruff format
-and rsync -r -P -e 'ssh -p 28367' $rsync_ignore_expr (status dirname)  region-42.seetacloud.com:~/siglip/
-
+and rsync -r -P -e 'ssh -p 28367' $rsync_ignore_expr (status dirname) region-42.seetacloud.com:~/siglip/
