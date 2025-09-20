@@ -15,7 +15,7 @@ def evaluate_itc(
     cfg: dict,
 ):
     texts = loader.dataset.text
-    images = loader.dataset.image
+    imgs = loader.dataset.image
     num_text = len(texts)
     text_bs = cfg['batch_size_test_text']
 
@@ -36,12 +36,9 @@ def evaluate_itc(
     text_embeds = torch.cat(text_embeds, dim=0)
 
     image_embeds = []
-    for images, _, _ in track(loader, description='Encode Fi'):
-        [p, m, s] = map(lambda t: t.squeeze(1).to(device), list(images.values()))
-
-        image_embed = model.get_image_features(
-            pixel_values=p, pixel_attention_mask=m, spatial_shapes=s
-        )
+    for imgs, _ in track(loader, description='Encode Fi'):
+        imgs = {k: v.to(device) for k, v in imgs.items()}
+        image_embed = model.get_image_features(**imgs)
         image_embeds.append(F.normalize(image_embed, dim=-1))
     image_embeds = torch.cat(image_embeds, dim=0)
 

@@ -1,9 +1,8 @@
-import torch
-from torch.utils.data import DataLoader
-from torchvision import transforms
+from typing import Optional
 
+import torch
+from torch.utils.data import DataLoader, Dataset, Sampler
 from dataset.search_dataset import search_train_dataset, search_test_dataset
-from torch.utils.data import Dataset
 from collections.abc import Callable
 
 
@@ -32,23 +31,20 @@ def create_sampler(datasets, shuffles, num_tasks, global_rank):
 
 def create_loader(
     dataset: Dataset,
-    sampler: bool | None,
     batch_size: int,
-    num_worker: int,
-    is_train: bool,
-    collate_fn: Callable | None,
+    sampler: Optional[Sampler] = None,
+    num_worker: int = 1,
+    is_train: bool = False,
+    collate_fn: Callable | None = None,
 ):
-    if is_train:
-        shuffle = sampler is None
-        drop_last = True
-    else:
-        shuffle = False
-        drop_last = False
+    shuffle = (sampler is not None) and is_train
+    drop_last = is_train
+
     loader = DataLoader(
         dataset,
         batch_size=batch_size,
         num_workers=num_worker,
-        pin_memory=True,
+        pin_memory=torch.cuda.is_available(),
         sampler=sampler,
         shuffle=shuffle,
         collate_fn=collate_fn,
