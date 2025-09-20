@@ -1,35 +1,39 @@
+from pathlib import Path
+from functools import partial
+
 import torch
 import yaml
-import open_clip
-from mobileclip.modules.common.mobileone import reparameterize_model
 from dataset import create_dataset, create_loader
 from evaluate import evaluate_itc, mAP
+from transformers import (
+    Siglip2Model,
+    Siglip2ImageProcessor,
+    AutoTokenizer,
+    GemmaTokenizer,
+)
 
 from rich.table import Table, Column
 from rich.console import Console
 
 
-def load_pretrained_mclip2():
-    MODEL_NAME = 'MobileCLIP2-S4'
-    PRETRAINED = './checkpoints/mobileclip2_s4.pt'
-
-    model, _, preprocess = open_clip.create_model_and_transforms(
-        MODEL_NAME, pretrained=PRETRAINED
-    )
-    model = reparameterize_model(model.eval())
-    tokenizer = open_clip.get_tokenizer(MODEL_NAME)
+def build_model():
+    MODEL_NAME = 'google/siglip2-base-patch16-naflex'
+    model = Siglip2Model.from_pretrained(MODEL_NAME)
+    processor = Siglip2ImageProcessor.from_pretrained(MODEL_NAME)
+    tokenizer: GemmaTokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
     dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     model.to(dev)
 
-    return model, preprocess, tokenizer
+    return model, processor, tokenizer
 
 
 def main():
     with open('config/mobile-clip2.yaml', 'r') as f:
         cfg = yaml.load(f.read(), yaml.Loader)
 
-    model, preprocess, tokenizer = load_pretrained_mclip2()
-    _, test_dataset = create_dataset(cfg, preprocess, evaluate=True)
+    model, processor, tokenizer = build_model()
+    processor = partial(processor, return_tensors='pt')
+    _, test_dataset = create_dataset(cfg, processor, evaluate=True)
 
     test_loader = create_loader(
         test_dataset,
@@ -41,7 +45,7 @@ def main():
     )
 
     dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    sim_mat, *_ = evaluate_itc(model, test_loader, tokenizer, dev, cfg)
+    sim_mat, *_ = evaluate_itc(model, test_loader, tokenizer, processor, dev, cfg)
     res = mAP(sim_mat, test_loader.dataset.g_pids, test_loader.dataset.q_pids)
 
     # Pretty Print

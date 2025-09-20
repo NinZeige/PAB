@@ -69,6 +69,7 @@ erasing_p: 0.6
 batch_size_train: 22
 batch_size_test: 22
 batch_size_test_text: 150
+batch_size_test_text: 150
 
 embed_dim: 2048
 itc_dp: 0.5
@@ -89,5 +90,5 @@ k_test: 128
 
 
 be_hard: True
-be_pose_img: True
+be_pose_img: False
 pose_conv: True

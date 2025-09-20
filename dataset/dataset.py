@@ -1,33 +1,15 @@
 import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
-from torchvision.transforms import InterpolationMode
 
 from dataset.search_dataset import search_train_dataset, search_test_dataset
 from torch.utils.data import Dataset
 from collections.abc import Callable
 
 
-def create_dataset(config, preprocess, evaluate=False):
-    normalize = transforms.Normalize(
-        (0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)
-    )
-
+def create_dataset(config, preprocess: Callable | None, evaluate=False):
     train_transform = preprocess
-
-    # model, _, preprocess = open_clip.create_model_and_transforms(model_name, pretrained="./checkpoints/mobileclip2_s4.pt", **model_kwargs)
-    # tokenizer = open_clip.get_tokenizer(model_name)
-
-    # # Model needs to be in eval mode for inference because of batchnorm layers unlike ViTs
-    # model.eval()
-
-    # # For inference/model exporting purposes, please reparameterize first
-    # model = reparameterize_model(model)
-
-    # normal_image = preprocess(Image.open("test/pict.jpg").convert("RGB")).unsqueeze(0)
-    # abnoml_image = preprocess(Image.open("test/bad_pict1.jpg").convert("RGB")).unsqueeze(0)
-
-    test_transform = preprocess
+    test_transform = train_transform
 
     test_dataset = search_test_dataset(config, test_transform)
     if evaluate:

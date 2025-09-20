@@ -1,8 +1,8 @@
 import os
-import random
+from collections.abc import Callable
+from typing import Any
 from random import randint, shuffle
 from random import random as rand
-import numpy as np
 from PIL import Image
 from pathlib import Path
 
@@ -121,20 +121,14 @@ class TextMaskingGenerator:
 
 
 class search_train_dataset(Dataset):
-    def __init__(self, config: dict[str | list[str]], transform):
+    def __init__(self, config: dict[str | list[str]], transform: Callable | None):
         self.image_root = PAB_ROOT
-        self.transform = transform
+        self.transform = transform if transform is not None else lambda x: x
         self.max_words = config['max_words']
         self.eda_p = config['eda_p']
 
         self.be_hard = config.get('be_hard', False)
         self.be_pose_img = config.get('be_pose_img', False)
-        print(
-            'train dataset -->    be_hard:',
-            self.be_hard,
-            '    be_pose_img:',
-            self.be_pose_img,
-        )
 
         ann_file = PAB_ROOT / config['train_file']
         self.ann = []
@@ -215,9 +209,9 @@ class search_train_dataset(Dataset):
 
 
 class search_test_dataset(Dataset):
-    def __init__(self, config, transform):
+    def __init__(self, config, transform: Callable | None):
         ann_file = PAB_ROOT / config['test_file']
-        self.transform = transform
+        self.transform = transform if transform is not None else lambda x: x
         self.image_root = PAB_ROOT
         self.max_words = config['max_words']
 

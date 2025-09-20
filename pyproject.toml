@@ -5,16 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "ipython>=8.37.0",
-    "mobileclip",
     "nltk>=3.9.1",
-    "open-clip-torch",
     "rich>=14.1.0",
+    "torch>=2.8.0",
+    "torchvision>=0.23.0",
+    "transformers>=4.56.1",
 ]
-
-[tool.uv.sources]
-open-clip-torch = { path = "../../../clone/ml-mobileclip/open_clip" }
-mobileclip = { path = "../../../clone/ml-mobileclip" }
 
 [[tool.uv.index]]
 url = "https://pypi.tuna.tsinghua.edu.cn/simple"
@@ -22,6 +18,7 @@ default = true
 
 [dependency-groups]
 dev = [
+    "ipython>=8.37.0",
     "ruff>=0.13.1",
 ]
 
