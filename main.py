@@ -3,7 +3,7 @@ import argparse
 from pathlib import Path
 
 from rich.console import Console
-from rich.progress import Progress
+from rich.progress import track
 from rich.table import Table, Column
 
 import torch
@@ -92,7 +92,9 @@ def train_main(cfg: dict[str, int | str | list[str]]):
     table, console = rich_table_setup()
 
     for epoch_no in range(max_epoch):
-        loss = train_once(model, train_loader, epoch_no, optim, scaler, scheduler)
+        loss = train_once(
+            model, train_loader, epoch_no, optim, scaler, scheduler, console=console
+        )
 
         # Eval the model and then save best
         res = evaluate_once(model, test_loader, table, console)
@@ -128,45 +130,45 @@ def train_once(
     optim: torch.optim.Optimizer,
     scaler: torch.GradScaler,
     scheduler,
+    console: Console | None = None,
 ):
     dev: torch.device = model.device
     running = 0
     model.train()
 
-    with Progress() as prog:
-        train_task = prog.add_task(f'Ep {epoch_no}', total=len(train_loader))
-        cnt = 0
-        INTV = 50
+    cnt = 0
+    INTV = 50
 
-        for img, txt, _ in train_loader:
-            optim.zero_grad(set_to_none=True)
+    for img, txt, _ in track(
+        train_loader, description=f'Ep {epoch_no}', console=console
+    ):
+        optim.zero_grad(set_to_none=True)
 
-            img = to_device(img, dev)
-            txt = to_device(txt, dev)
-            with torch.autocast(
-                device_type=dev.type,
-                dtype=torch.bfloat16,
-                enabled=torch.cuda.is_available(),
-            ):
-                # 直接用内置 loss（SigLIP 风格的 binary logistic 对比损失）
-                output = model(**img, **txt, return_loss=True)
-                loss = output.loss
+        img = to_device(img, dev)
+        txt = to_device(txt, dev)
+        with torch.autocast(
+            device_type=dev.type,
+            dtype=torch.bfloat16,
+            enabled=torch.cuda.is_available(),
+        ):
+            # 直接用内置 loss（SigLIP 风格的 binary logistic 对比损失）
+            output = model(**img, **txt, return_loss=True)
+            loss = output.loss
 
-            scaler.scale(loss).backward()
-            scaler.unscale_(optim)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+        scaler.scale(loss).backward()
+        scaler.unscale_(optim)
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-            scaler.step(optim)
-            scaler.update()
-            scheduler.step()
+        scaler.step(optim)
+        scaler.update()
+        scheduler.step()
 
-            running += loss.item()
-            cur_lr = optim.param_groups[0]['lr']
+        running += loss.item()
+        cur_lr = optim.param_groups[0]['lr']
 
-            cnt = (cnt + 1) % INTV
-            if not cnt:
-                prog.console.print(f'lr={cur_lr:.2e}  loss={loss.item():.4f}')
-            prog.update(train_task, advance=1)
+        cnt = (cnt + 1) % INTV
+        if not cnt:
+            console.print(f'lr={cur_lr:.2e}  loss={loss.item():.4f}')
 
     return running / max(1, len(train_loader))
 

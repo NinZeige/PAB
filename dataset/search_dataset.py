@@ -1,6 +1,5 @@
 import os
 from collections.abc import Callable
-from typing import Any
 from random import randint, shuffle
 from random import random as rand
 from PIL import Image

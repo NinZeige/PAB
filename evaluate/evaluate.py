@@ -12,7 +12,7 @@ def evaluate_once(
 ):
     model.eval()
 
-    sims, *_ = evaluate_itc(model, loader)
+    sims, *_ = evaluate_itc(model, loader, console=console)
     res = mAP(sims, loader.dataset.g_pids, loader.dataset.q_pids)
 
     # Pretty Print
@@ -25,10 +25,11 @@ def evaluate_once(
 def evaluate_itc(
     model: Siglip2Model,
     loader: DataLoader,
+    console: Console | None = None,
 ):
     image_features = []
     text_features = []
-    for imgs, text, _ in track(loader, description='Encode Fi'):
+    for imgs, text, _ in track(loader, description='Evaluate', console=console):
         imgs = {k: v.to(model.device) for k, v in imgs.items()}
         text = {k: v.to(model.device) for k, v in text.items()}
         fi_batch = model.get_image_features(**imgs)
