@@ -45,6 +45,7 @@ def create_loader(
         batch_size=batch_size,
         num_workers=num_worker,
         pin_memory=torch.cuda.is_available(),
+        persistent_workers=True,
         sampler=sampler,
         shuffle=shuffle,
         collate_fn=collate_fn,

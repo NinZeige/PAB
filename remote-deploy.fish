@@ -8,7 +8,8 @@ set -g ignore_expr '.venv/' \
     'pyproject.toml' \
     'uv.lock' \
     '.ruff_cache/' \
-    checkpoints/
+    'checkpoints/' \
+    'output/'
 
 set -g rsync_ignore_expr
 
@@ -18,6 +19,7 @@ end
 
 if test $origin_path != (status dirname)
     echo Panic >&2
+    exit
 end
 
 ruff format

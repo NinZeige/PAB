@@ -59,6 +59,7 @@ def train_main(cfg: dict[str, int | str | list[str]]):
         train_dataset,
         batch_size=cfg['batch_size_train'],
         is_train=True,
+        num_worker=4,
         collate_fn=make_train_collate_fn(processor, tokenizer, cfg['max_words']),
     )
     test_loader = create_loader(
@@ -74,6 +75,7 @@ def train_main(cfg: dict[str, int | str | list[str]]):
         weight_decay=cfg['optimizer']['weight_decay'],
         betas=(0.9, 0.98),
         eps=1e-8,
+        fused=True,
     )
 
     # Prepare Optimizers
@@ -101,7 +103,7 @@ def train_main(cfg: dict[str, int | str | list[str]]):
         if cur_mAP > best_mAP:
             best_mAP = cur_mAP
             save_ckpt(
-                Path('checkpoints'),
+                Path('output/best.pt'),
                 model,
                 optim,
                 scheduler,
@@ -134,6 +136,7 @@ def train_once(
     with Progress() as prog:
         train_task = prog.add_task(f'Ep {epoch_no}', total=len(train_loader))
         cnt = 0
+        INTV = 50
 
         for img, txt, _ in train_loader:
             optim.zero_grad(set_to_none=True)
@@ -160,7 +163,7 @@ def train_once(
             running += loss.item()
             cur_lr = optim.param_groups[0]['lr']
 
-            cnt = (cnt + 1) % 50
+            cnt = (cnt + 1) % INTV
             if not cnt:
                 prog.console.print(f'lr={cur_lr:.2e}  loss={loss.item():.4f}')
             prog.update(train_task, advance=1)
