@@ -1,16 +1,24 @@
 import yaml
-from rich.table import Table, Column
+import argparse
+from pathlib import Path
+
 from rich.console import Console
-from rich.progress import track
+from rich.progress import Progress
+from rich.table import Table, Column
 
 import torch
-from torch.utils.data import DataLoader
 from torch.optim import AdamW
-from transformers import Siglip2Model
+from torch.utils.data import DataLoader
+from transformers import get_cosine_schedule_with_warmup, Siglip2Model
 
 from dataset import create_dataset, create_loader
 from evaluate import evaluate_once
-from models.siglip2 import build_model, make_eval_collate_fn, make_train_collate_fn
+from models.siglip2 import (
+    build_model,
+    make_eval_collate_fn,
+    make_train_collate_fn,
+    save_ckpt,
+)
 
 
 def rich_table_setup():
@@ -41,40 +49,67 @@ def evaluate_main(cfg: dict[str, str | list[str]]):
 
 def train_main(cfg: dict[str, int | str | list[str]]):
     dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    best_mAP = -1.0
 
     model, processor, tokenizer = build_model(dev)
-    model.train()
 
+    # Prepare dataset
     train_dataset, test_dataset = create_dataset(cfg, None)
     train_loader = create_loader(
         train_dataset,
         batch_size=cfg['batch_size_train'],
         is_train=True,
-        collate_fn=make_train_collate_fn(processor, tokenizer),
+        collate_fn=make_train_collate_fn(processor, tokenizer, cfg['max_words']),
     )
     test_loader = create_loader(
         test_dataset,
         batch_size=cfg['batch_size_test'],
-        collate_fn=make_eval_collate_fn(processor),
-    )
-
-    optim = AdamW(
-        [p for p in list(model.parameters()) if p.requires_grad],
-        lr=cfg['optimizer']['lr'],
-        weight_decay=cfg['optimizer']['weight_decay'],
+        collate_fn=make_eval_collate_fn(processor, tokenizer, cfg['max_words']),
     )
 
     max_epoch = cfg['scheduler']['epochs']
+    optim = AdamW(
+        [p for p in list(model.parameters()) if p.requires_grad],
+        lr=float(cfg['optimizer']['lr']),  # '1e-9' 会被yaml解析为`str`类型
+        weight_decay=cfg['optimizer']['weight_decay'],
+        betas=(0.9, 0.98),
+        eps=1e-8,
+    )
+
+    # Prepare Optimizers
+    scaler = torch.GradScaler(
+        device=model.device.type, enabled=torch.cuda.is_available()
+    )
+    scheduler = get_cosine_schedule_with_warmup(
+        optim,
+        cfg['scheduler']['num_warmup_steps'],
+        max_epoch * len(train_loader),
+    )
+
+    # For `rich` pretty print
     table, console = rich_table_setup()
 
     for epoch_no in range(max_epoch):
-        train_once(model, train_loader, optim, epoch_no)
+        loss = train_once(model, train_loader, epoch_no, optim, scaler, scheduler)
 
-        # Eval the model, and [TODO] save best result
-        evaluate_once(model, test_loader, table, console)
-        raise NotImplemented('Save Result')
+        # Eval the model and then save best
+        res = evaluate_once(model, test_loader, table, console)
+        cur_mAP = float(res['mAP'])
 
-    raise NotImplemented
+        print(f'[Epoch {epoch_no}] train_loss={loss:.4f}  mAP={cur_mAP:.4f}')
+
+        if cur_mAP > best_mAP:
+            best_mAP = cur_mAP
+            save_ckpt(
+                Path('checkpoints'),
+                model,
+                optim,
+                scheduler,
+                scaler,
+                epoch_no,
+                best_mAP,
+                cfg,
+            )
 
 
 def to_device(batch, device):
@@ -87,29 +122,64 @@ def to_device(batch, device):
 def train_once(
     model: Siglip2Model,
     train_loader: DataLoader,
-    optim,
     epoch_no: int,
+    optim: torch.optim.Optimizer,
+    scaler: torch.GradScaler,
+    scheduler,
 ):
-    dev = model.device
-    optim.zero_grad()
+    dev: torch.device = model.device
+    running = 0
+    model.train()
 
-    for img, txt, _ in track(train_loader, description=f'Ep {epoch_no}'):
-        img = to_device(img, dev)
-        txt = to_device(txt, dev)
+    with Progress() as prog:
+        train_task = prog.add_task(f'Ep {epoch_no}', total=len(train_loader))
+        cnt = 0
 
-        output = model(**img, **txt, return_loss=True)
-        loss = output.loss
-        loss.backward()
-        optim.step()
+        for img, txt, _ in train_loader:
+            optim.zero_grad(set_to_none=True)
 
-    raise NotImplemented()
+            img = to_device(img, dev)
+            txt = to_device(txt, dev)
+            with torch.autocast(
+                device_type=dev.type,
+                dtype=torch.bfloat16,
+                enabled=torch.cuda.is_available(),
+            ):
+                # 直接用内置 loss（SigLIP 风格的 binary logistic 对比损失）
+                output = model(**img, **txt, return_loss=True)
+                loss = output.loss
+
+            scaler.scale(loss).backward()
+            scaler.unscale_(optim)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
+
+            scaler.step(optim)
+            scaler.update()
+            scheduler.step()
+
+            running += loss.item()
+            cur_lr = optim.param_groups[0]['lr']
+
+            cnt = (cnt + 1) % 50
+            if not cnt:
+                prog.console.print(f'lr={cur_lr:.2e}  loss={loss.item():.4f}')
+            prog.update(train_task, advance=1)
+
+    return running / max(1, len(train_loader))
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-e', '--evaluation', action='store_true')
+    args = parser.parse_args()
+
     with open('config/siglip2.yaml', 'r') as f:
         cfg = yaml.load(f.read(), yaml.Loader)
 
-    evaluate_main(cfg)
+    if args.evaluation:
+        evaluate_main(cfg)
+    else:
+        train_main(cfg)
 
 
 if __name__ == '__main__':

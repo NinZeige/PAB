@@ -130,7 +130,7 @@ class search_train_dataset(Dataset):
         self.be_hard = config.get('be_hard', False)
         self.be_pose_img = config.get('be_pose_img', False)
 
-        ann_file = PAB_ROOT / config['train_file']
+        ann_file = [PAB_ROOT / fname for fname in config['train_file']]
         self.ann = []
         for f in ann_file:
             anns = read_json_to_list(f)

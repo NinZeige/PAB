@@ -18,6 +18,7 @@ def evaluate_once(
     # Pretty Print
     table.add_row(*map(lambda x: f'{x:.2f}%', res.values()))
     console.print(table)
+    return res
 
 
 @torch.no_grad()
