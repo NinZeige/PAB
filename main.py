@@ -33,7 +33,11 @@ def rich_table_setup():
 
 def evaluate_main(cfg: dict[str, str | list[str]]):
     dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    model, processor, tokenizer = build_model(dev)
+
+    ckpt = cfg.get('checkpoint', None)
+    if ckpt is not None:
+        ckpt = Path(ckpt)
+    model, processor, tokenizer = build_model(dev, ckpt)
     model.eval()
 
     _, test_dataset = create_dataset(cfg, None, evaluate=True)
@@ -51,7 +55,10 @@ def train_main(cfg: dict[str, int | str | list[str]]):
     dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     best_mAP = -1.0
 
-    model, processor, tokenizer = build_model(dev)
+    ckpt = cfg.get('checkpoint', None)
+    if ckpt is not None:
+        ckpt = Path(ckpt)
+    model, processor, tokenizer = build_model(dev, ckpt)
 
     # Prepare dataset
     train_dataset, test_dataset = create_dataset(cfg, None)
@@ -176,11 +183,14 @@ def train_once(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-e', '--evaluation', action='store_true')
+    parser.add_argument('--checkpoint')
     args = parser.parse_args()
 
     with open('config/siglip2.yaml', 'r') as f:
         cfg = yaml.load(f.read(), yaml.Loader)
 
+    if args.checkpoint:
+        cfg['checkpoint'] = args.checkpoint
     if args.evaluation:
         evaluate_main(cfg)
     else:

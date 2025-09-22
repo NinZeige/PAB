@@ -52,6 +52,10 @@ train_file:  [
   # 'annotation/train/attr_74.json',
 ]
 
+## Text Encoder
+text_config: 'config/config_bert.json'
+text_encoder: 'checkpoints/bert-base-uncased'
+
 
 ## Image Encoder
 h: 224
