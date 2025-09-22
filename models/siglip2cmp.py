@@ -14,12 +14,16 @@ from .bert import BertConfig, BertForMaskedLM
 @dataclass
 class SigLIP2CMPOutput:
     loss: Optional[torch.Tensor] = None
+    image_embeds: Optional[torch.Tensor] = None
+    text_embeds: Optional[torch.Tensor] = None
+    image_feat: Optional[torch.Tensor] = None
+    text_feat: Optional[torch.Tensor] = None
 
 
 class SigLIP2CMP(nn.Module):
     MODEL_NAME = 'google/siglip2-base-patch16-naflex'
-    SIGLIP_LOSS_COEFF = 1.0
-    ITMHEAD_LOSS_COEFF = 1.0
+    SIGLIP_LOSS_COEFF = 0.1
+    ITMHEAD_LOSS_COEFF = 0.9
 
     def __init__(
         self,
@@ -33,6 +37,7 @@ class SigLIP2CMP(nn.Module):
         """
         super().__init__()
         self.siglip2 = siglip2
+        self.device = self.siglip2.device
         self.bert = build_bert(config=cfg, vision_width=embed_dim)
         self.temp = nn.Parameter(torch.ones([]) * cfg['temp'])
         self.epsilon = cfg['label_smooth']
@@ -46,28 +51,11 @@ class SigLIP2CMP(nn.Module):
             nn.Linear(input_dim * 2, output_dim),
         )
 
-        def list_meta(model):
-            metas = []
-            for name, p in model.named_parameters():
-                if getattr(p, 'is_meta', False):
-                    metas.append(('param', name, p.shape))
-            for name, b in model.named_buffers():
-                if getattr(b, 'is_meta', False):
-                    metas.append(('buffer', name, b.shape))
-            return metas
-
-        metas = list_meta(self)
-        if metas:
-            print('Found meta tensors:')
-            for kind, name, shape in metas:
-                print(f'  {kind}: {name} {shape}')
-            breakpoint()
-        else:
-            print('No meta tensors detected.')
-
     @staticmethod
-    def build_model(config, device: torch.device | str):
-        sigmodel, proc, tokenizer = siglip2.build_model(device)
+    def build_model(
+        config, device: torch.device | str, siglip2ckpt: Path | None = None
+    ):
+        sigmodel, proc, tokenizer = siglip2.build_model(device, local_file=siglip2ckpt)
         model = SigLIP2CMP(sigmodel, config).to(device)
         return model, proc, tokenizer
 
@@ -77,6 +65,7 @@ class SigLIP2CMP(nn.Module):
 
     def forward(
         self,
+        idx,
         input_ids: Optional[torch.LongTensor] = None,
         pixel_values: Optional[torch.FloatTensor] = None,
         pixel_attention_mask: Optional[torch.Tensor] = None,
@@ -84,7 +73,6 @@ class SigLIP2CMP(nn.Module):
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         return_loss: Optional[bool] = None,
-        idx=None,
     ):
         sigout = self.siglip2.forward(
             input_ids=input_ids,
@@ -96,7 +84,6 @@ class SigLIP2CMP(nn.Module):
             return_loss=return_loss,
             output_hidden_states=True,
         )
-        loss = sigout.loss
         dev = self.siglip2.device
 
         image_embeds = sigout.vision_model_output.hidden_states[-1]
@@ -106,20 +93,34 @@ class SigLIP2CMP(nn.Module):
         text_feat = sigout.text_embeds
         text_atts = torch.ones(text_embeds.shape[:2], device=dev)
 
-        loss += self.get_matching_loss(
-            image_embeds=image_embeds,
-            image_atts=image_atts,
-            image_feat=image_feat,
-            text_embeds=text_embeds,
-            text_atts=text_atts,
-            text_feat=text_feat,
-            idx=idx,
-        )
+        # Loss Calculation
+        loss: Optional[bool] = None
+        if return_loss is not None and return_loss:
+            loss = sigout.loss
+            loss += self.get_matching_loss(
+                image_embeds=image_embeds,
+                image_atts=image_atts,
+                image_feat=image_feat,
+                text_embeds=text_embeds,
+                text_atts=text_atts,
+                text_feat=text_feat,
+                idx=idx,
+            )
 
         output = SigLIP2CMPOutput(
             loss=loss,
+            image_embeds=image_embeds,
+            text_embeds=text_embeds,
+            image_feat=image_feat,
+            text_feat=text_feat,
         )
         return output
+
+    def get_image_features(self, **kwargs):
+        return self.siglip2.get_image_features(**kwargs)
+
+    def get_text_features(self, **kwargs):
+        return self.siglip2.get_text_features(**kwargs)
 
     def get_cross_embeds(
         self,

@@ -115,9 +115,9 @@ class Siglip2CMPTest(unittest.TestCase):
             collate_fn=siglip2.make_eval_collate_fn(proc, token, cfg['max_words']),
         )
 
-        img, txt, _ = next(iter(loader))
+        img, txt, idx = next(iter(loader))
 
-        output = model.forward(**img, **txt, return_loss=True)
+        output = model.forward(idx=idx, **img, **txt, return_loss=True)
         self.assertTrue(isinstance(output, siglip2cmp.ITMOutput))
 
 

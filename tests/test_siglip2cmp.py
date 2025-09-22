@@ -35,7 +35,7 @@ class TestSigLIP2CMPForward(unittest.TestCase):
         txt = to_device(txt, dev)
         idx = idx.to(dev)
 
-        output = model.forward(**img, **txt, return_loss=True, idx=idx)
+        output = model.forward(idx=idx, **img, **txt, return_loss=True)
         self.assertTrue(output.loss is not None)
         self.assertEqual(type(float(output.loss)), float)
 

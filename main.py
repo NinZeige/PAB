@@ -14,11 +14,11 @@ from transformers import get_cosine_schedule_with_warmup, Siglip2Model
 from dataset import create_dataset, create_loader
 from evaluate import evaluate_once
 from models.siglip2 import (
-    build_model,
     make_eval_collate_fn,
     make_train_collate_fn,
     save_ckpt,
 )
+from models.siglip2cmp import SigLIP2CMP
 
 
 def rich_table_setup():
@@ -37,7 +37,7 @@ def evaluate_main(cfg: dict[str, str | list[str]]):
     ckpt = cfg.get('checkpoint', None)
     if ckpt is not None:
         ckpt = Path(ckpt)
-    model, processor, tokenizer = build_model(dev, ckpt)
+    model, processor, tokenizer = SigLIP2CMP.build_model(cfg, dev, siglip2ckpt=ckpt)
     model.eval()
 
     _, test_dataset = create_dataset(cfg, None, evaluate=True)
@@ -58,7 +58,7 @@ def train_main(cfg: dict[str, int | str | list[str]]):
     ckpt = cfg.get('checkpoint', None)
     if ckpt is not None:
         ckpt = Path(ckpt)
-    model, processor, tokenizer = build_model(dev, ckpt)
+    model, processor, tokenizer = SigLIP2CMP.build_model(cfg, dev, siglip2ckpt=ckpt)
 
     # Prepare dataset
     train_dataset, test_dataset = create_dataset(cfg, None)
@@ -94,6 +94,7 @@ def train_main(cfg: dict[str, int | str | list[str]]):
         cfg['scheduler']['num_warmup_steps'],
         max_epoch * len(train_loader),
     )
+    breakpoint()
 
     # For `rich` pretty print
     table, console = rich_table_setup()
@@ -131,7 +132,7 @@ def to_device(batch, device):
 
 
 def train_once(
-    model: Siglip2Model,
+    model: SigLIP2CMP,
     train_loader: DataLoader,
     epoch_no: int,
     optim: torch.optim.Optimizer,
@@ -146,20 +147,22 @@ def train_once(
     cnt = 0
     INTV = 50
 
-    for img, txt, _ in track(
+    for img, txt, idx in track(
         train_loader, description=f'Ep {epoch_no}', console=console
     ):
         optim.zero_grad(set_to_none=True)
 
         img = to_device(img, dev)
         txt = to_device(txt, dev)
+        idx = idx.to(dev)
+
         with torch.autocast(
             device_type=dev.type,
             dtype=torch.bfloat16,
             enabled=torch.cuda.is_available(),
         ):
             # 直接用内置 loss（SigLIP 风格的 binary logistic 对比损失）
-            output = model(**img, **txt, return_loss=True)
+            output = model.forward(idx=idx, **img, **txt, return_loss=True)
             loss = output.loss
 
         scaler.scale(loss).backward()
