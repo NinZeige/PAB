@@ -1,23 +1,34 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import Optional
 
 import torch
 import open_clip
+from mobileclip.modules.common.mobileone import reparameterize_model
 
 MODEL_NAME = 'MobileCLIP2-S4'
 
 
-def load_pretrained(local_file: Path, device: torch.device | str):
-    if not local_file.is_file():
-        raise ValueError(f'Given local_file {local_file} does not exist')
+def load_pretrained(
+    pretrained: Path, device: torch.device | str, ckpt: Optional[Path] = None
+):
+    if not pretrained.is_file():
+        raise ValueError(f'Given pretrained {pretrained} does not exist')
+    if ckpt is not None and not ckpt.is_file():
+        raise ValueError(f'Given checkpoint {ckpt} does not exist')
 
-    weight_file = str(local_file)
+    weight_file = str(pretrained)
 
     model, train_proc, test_proc = open_clip.create_model_and_transforms(
         MODEL_NAME,
         pretrained=weight_file,
         device=device,
     )
+
+    model = reparameterize_model(model)
+    if ckpt is not None:
+        obj = torch.load(ckpt)
+        model.load_state_dict(obj['model'])
 
     tokenizer = open_clip.get_tokenizer(MODEL_NAME)
 

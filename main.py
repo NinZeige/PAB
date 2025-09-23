@@ -5,6 +5,7 @@ from typing import Optional
 import yaml
 
 import torch
+from torch import GradScaler
 from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
@@ -15,11 +16,23 @@ import open_clip
 from rich.table import Table, Column
 from rich.console import Console
 from rich.progress import track
-from mobileclip.modules.common.mobileone import reparameterize_model
 
 from models import mobileclip
 from dataset import create_dataset, create_loader
 from evaluate import evaluate_once
+
+
+@dataclass
+class ClipLossArgs:
+    local_loss: bool = False
+    gather_with_grad: bool = False
+    cache_labels: bool = True
+    rank: int = 0
+    world_size: int = 1
+    horovod: bool = False
+    distill: bool = False
+    model: str = 'mobileclip2'
+    siglip: bool = False
 
 
 def rich_table_setup():
@@ -35,11 +48,17 @@ def rich_table_setup():
 def evaluate_main(cfg: dict[str, str | list[str]]):
     dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
 
-    assert isinstance(cfg['checkpoint'], str)
-    ckpt = Path(cfg['checkpoint'])
+    assert isinstance(cfg['pretrained'], str)
 
-    model, _, preproc, tokenizer = mobileclip.load_pretrained(ckpt, device=dev)
-    model = reparameterize_model(model.eval())
+    ckpt = None
+    if 'checkpoint' in cfg:
+        assert isinstance(cfg['checkpoint'], str)
+        ckpt = Path(cfg['checkpoint'])
+    pretrained = Path(cfg['pretrained'])
+
+    model, _, preproc, tokenizer = mobileclip.load_pretrained(
+        pretrained, device=dev, ckpt=ckpt
+    )
     assert isinstance(model, open_clip.CustomTextCLIP)
 
     test_dataset = create_dataset(
@@ -67,11 +86,15 @@ def train_main(cfg: dict):
     assert isinstance(cfg['batch_size_test'], int)
     assert isinstance(cfg['batch_size_train'], int)
     assert isinstance(cfg['max_words'], int)
-    assert isinstance(cfg['checkpoint'], str)
 
-    ckpt = Path(cfg['checkpoint'])
+    ckpt = None
+    if 'checkpoint' in cfg:
+        assert isinstance(cfg['checkpoint'], str)
+        ckpt = Path(cfg['checkpoint'])
+
+    pretrained = Path(cfg['pretrained'])
     model, train_proc, test_proc, tokenizer = mobileclip.load_pretrained(
-        ckpt, device=dev
+        pretrained, device=dev, ckpt=ckpt
     )
 
     train_dataset = create_dataset(
@@ -122,15 +145,20 @@ def train_main(cfg: dict):
         cfg['scheduler']['num_warmup_steps'],
         max_epoch * len(train_loader),
     )
+    loss_func = open_clip.create_loss(ClipLossArgs())
+    assert isinstance(loss_func, open_clip.ClipLoss)
+
     t, c = rich_table_setup()
     best_mAP = -1.0
 
     for epoch_no in range(max_epoch):
-        loss = train_once(
+        loss = train_one_epoch(
             model,
             train_loader,
             epoch_no,
             optim,
+            scaler,
+            loss_func,
             scheduler,
             c,
         )
@@ -160,13 +188,15 @@ def to_device(batch, device):
     }
 
 
-def train_once(
+def train_one_epoch(
     model: open_clip.CustomTextCLIP,
     train_loader: DataLoader,
     epoch_no: int,
     optim: torch.optim.Optimizer,
+    scaler: GradScaler,
+    loss_fn: open_clip.ClipLoss,
     scheduler,
-    console: Console | None = None,
+    console: Console,
 ):
     dev = next(model.parameters()).device
     assert isinstance(dev, torch.device)
@@ -176,7 +206,7 @@ def train_once(
     model.train()
 
     cnt = 0
-    INTV = 50
+    INTV = 5
 
     for imgs, text, _ in track(
         train_loader, description=f'Ep {epoch_no}', console=console
@@ -195,33 +225,28 @@ def train_once(
             text_feat: torch.Tensor
             logit_scale: torch.Tensor
 
-            image_feat, text_feat, logit_scale = model.forward(image=imgs, text=text)  # type: ignore
-
-            logits_per_image = (
-                F.normalize(image_feat, dim=-1) @ F.normalize(text_feat, dim=-1).t()
+            image_feat, text_feat, logit_scale = model(image=imgs, text=text)  # type: ignore
+            loss = loss_fn(
+                image_features=image_feat,
+                text_features=text_feat,
+                logit_scale=logit_scale,
+                output_dict=True,
             )
-            logits_per_text = logits_per_image.t()
-            logit_scale = logit_scale.clamp(1e-3, 100)
+            total_loss = sum(loss.values())
 
-            logits_per_image = logits_per_image * logit_scale
-            logits_per_text = logits_per_text * logit_scale
-            target = torch.arange(logits_per_image.shape[0], device=dev)
-
-            loss_i2t = F.cross_entropy(logits_per_image, target)
-            loss_t2i = F.cross_entropy(logits_per_text, target)
-            loss = (loss_i2t + loss_t2i) * 0.5
-
-        loss.backward()
+        scaler.scale(total_loss).backward()  # type: ignore
+        scaler.unscale_(optim)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-        optim.step()
-        scheduler.step()
 
-        running += loss.item()
+        scaler.step(optim)
+        scaler.update()
+        scheduler.step()
+        running += total_loss
         cur_lr = optim.param_groups[0]['lr']
 
         cnt = (cnt + 1) % INTV
         if not cnt and console is not None:
-            console.print(f'lr={cur_lr:.2e}  loss={loss.item():.4f}')
+            console.print(f'lr={cur_lr:.2e}  loss={total_loss:.4f}')
 
     return running / max(1, len(train_loader))
 
@@ -229,6 +254,7 @@ def train_once(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--checkpoint')
+    parser.add_argument('--pretrained')
     parser.add_argument('--save_dir')
     parser.add_argument('-e', '--evaluate', action='store_true')
     arg = parser.parse_args()
@@ -240,6 +266,8 @@ def main():
         cfg['checkpoint'] = arg.checkpoint
     if arg.save_dir:
         cfg['save_dir'] = arg.save_dir
+    if arg.pretrained:
+        cfg['pretrained'] = arg.pretrained
 
     if arg.evaluate:
         evaluate_main(cfg)
