@@ -3,7 +3,7 @@
 set origin_path (status dirname)
 
 set -g ignore_expr '.venv/' \
-    '__py__cache/' \
+    '__pycache__/' \
     '.git/' \
     'pyproject.toml' \
     'uv.lock' \
@@ -18,5 +18,7 @@ end
 if test $origin_path != (status dirname)
     echo "Panic" >&2
 end
+
+ruff format
 rsync -r -P -e 'ssh -p 28367' $rsync_ignore_expr (status dirname)  ninzeige@region-42.seetacloud.com:~/mclip-pab/
 

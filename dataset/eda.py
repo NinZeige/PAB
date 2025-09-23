@@ -4,159 +4,164 @@ import re
 import random
 from random import shuffle
 
+# for the first time you use wordnet
+# import nltk
+# nltk.download('wordnet')
+from nltk.corpus import wordnet
+
 random.seed(1)
 
 # stop words list
 stop_words = [
-    "i",
-    "me",
-    "my",
-    "myself",
-    "we",
-    "our",
-    "ours",
-    "ourselves",
-    "you",
-    "your",
-    "yours",
-    "yourself",
-    "yourselves",
-    "he",
-    "him",
-    "his",
-    "himself",
-    "she",
-    "her",
-    "hers",
-    "herself",
-    "it",
-    "its",
-    "itself",
-    "they",
-    "them",
-    "their",
-    "theirs",
-    "themselves",
-    "what",
-    "which",
-    "who",
-    "whom",
-    "this",
-    "that",
-    "these",
-    "those",
-    "am",
-    "is",
-    "are",
-    "was",
-    "were",
-    "be",
-    "been",
-    "being",
-    "have",
-    "has",
-    "had",
-    "having",
-    "do",
-    "does",
-    "did",
-    "doing",
-    "a",
-    "an",
-    "the",
-    "and",
-    "but",
-    "if",
-    "or",
-    "because",
-    "as",
-    "until",
-    "while",
-    "of",
-    "at",
-    "by",
-    "for",
-    "with",
-    "about",
-    "against",
-    "between",
-    "into",
-    "through",
-    "during",
-    "before",
-    "after",
-    "above",
-    "below",
-    "to",
-    "from",
-    "up",
-    "down",
-    "in",
-    "out",
-    "on",
-    "off",
-    "over",
-    "under",
-    "again",
-    "further",
-    "then",
-    "once",
-    "here",
-    "there",
-    "when",
-    "where",
-    "why",
-    "how",
-    "all",
-    "any",
-    "both",
-    "each",
-    "few",
-    "more",
-    "most",
-    "other",
-    "some",
-    "such",
-    "no",
-    "nor",
-    "not",
-    "only",
-    "own",
-    "same",
-    "so",
-    "than",
-    "too",
-    "very",
-    "s",
-    "t",
-    "can",
-    "will",
-    "just",
-    "don",
-    "should",
-    "now",
-    "",
+    'i',
+    'me',
+    'my',
+    'myself',
+    'we',
+    'our',
+    'ours',
+    'ourselves',
+    'you',
+    'your',
+    'yours',
+    'yourself',
+    'yourselves',
+    'he',
+    'him',
+    'his',
+    'himself',
+    'she',
+    'her',
+    'hers',
+    'herself',
+    'it',
+    'its',
+    'itself',
+    'they',
+    'them',
+    'their',
+    'theirs',
+    'themselves',
+    'what',
+    'which',
+    'who',
+    'whom',
+    'this',
+    'that',
+    'these',
+    'those',
+    'am',
+    'is',
+    'are',
+    'was',
+    'were',
+    'be',
+    'been',
+    'being',
+    'have',
+    'has',
+    'had',
+    'having',
+    'do',
+    'does',
+    'did',
+    'doing',
+    'a',
+    'an',
+    'the',
+    'and',
+    'but',
+    'if',
+    'or',
+    'because',
+    'as',
+    'until',
+    'while',
+    'of',
+    'at',
+    'by',
+    'for',
+    'with',
+    'about',
+    'against',
+    'between',
+    'into',
+    'through',
+    'during',
+    'before',
+    'after',
+    'above',
+    'below',
+    'to',
+    'from',
+    'up',
+    'down',
+    'in',
+    'out',
+    'on',
+    'off',
+    'over',
+    'under',
+    'again',
+    'further',
+    'then',
+    'once',
+    'here',
+    'there',
+    'when',
+    'where',
+    'why',
+    'how',
+    'all',
+    'any',
+    'both',
+    'each',
+    'few',
+    'more',
+    'most',
+    'other',
+    'some',
+    'such',
+    'no',
+    'nor',
+    'not',
+    'only',
+    'own',
+    'same',
+    'so',
+    'than',
+    'too',
+    'very',
+    's',
+    't',
+    'can',
+    'will',
+    'just',
+    'don',
+    'should',
+    'now',
+    '',
 ]
 
 
 def get_only_chars(line):
-    clean_line = ""
+    clean_line = ''
 
-    line = line.replace("’", "")
-    line = line.replace("'", "")
-    line = line.replace("-", " ")  # replace hyphens with spaces
-    line = line.replace("\t", " ")
-    line = line.replace("\n", " ")
+    line = line.replace('’', '')
+    line = line.replace("'", '')
+    line = line.replace('-', ' ')  # replace hyphens with spaces
+    line = line.replace('\t', ' ')
+    line = line.replace('\n', ' ')
     line = line.lower()
 
     for char in line:
-        if char in "qwertyuiopasdfghjklzxcvbnm ":
+        if char in 'qwertyuiopasdfghjklzxcvbnm ':
             clean_line += char
         else:
-            clean_line += " "
+            clean_line += ' '
 
-    clean_line = re.sub(" +", " ", clean_line)  # delete extra spaces
-    if clean_line[0] == " ":
+    clean_line = re.sub(' +', ' ', clean_line)  # delete extra spaces
+    if clean_line[0] == ' ':
         clean_line = clean_line[1:]
     return clean_line
 
@@ -165,11 +170,6 @@ def get_only_chars(line):
 # Synonym replacement
 # Replace n words in the sentence with synonyms from wordnet
 ########################################################################
-
-# for the first time you use wordnet
-# import nltk
-# nltk.download('wordnet')
-from nltk.corpus import wordnet
 
 
 def synonym_replacement(words, n):
@@ -188,8 +188,8 @@ def synonym_replacement(words, n):
             break
 
     # this is stupid but we need it, trust me
-    sentence = " ".join(new_words)
-    new_words = sentence.split(" ")
+    sentence = ' '.join(new_words)
+    new_words = sentence.split(' ')
 
     return new_words
 
@@ -198,9 +198,9 @@ def get_synonyms(word):
     synonyms = set()
     for syn in wordnet.synsets(word):
         for l in syn.lemmas():
-            synonym = l.name().replace("_", " ").replace("-", " ").lower()
-            synonym = "".join(
-                [char for char in synonym if char in " qwertyuiopasdfghjklzxcvbnm"]
+            synonym = l.name().replace('_', ' ').replace('-', ' ').lower()
+            synonym = ''.join(
+                [char for char in synonym if char in ' qwertyuiopasdfghjklzxcvbnm']
             )
             synonyms.add(synonym)
     if word in synonyms:
@@ -297,8 +297,8 @@ def add_word(new_words):
 
 def eda(sentence, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.1, num_aug=9):
     sentence = get_only_chars(sentence)
-    words = sentence.split(" ")
-    words = [word for word in words if word != ""]
+    words = sentence.split(' ')
+    words = [word for word in words if word != '']
     num_words = len(words)
 
     augmented_sentences = []
@@ -309,27 +309,27 @@ def eda(sentence, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.1, num_aug=9)
         n_sr = max(1, int(alpha_sr * num_words))
         for _ in range(num_new_per_technique):
             a_words = synonym_replacement(words, n_sr)
-            augmented_sentences.append(" ".join(a_words))
+            augmented_sentences.append(' '.join(a_words))
 
     # ri
     if alpha_ri > 0:
         n_ri = max(1, int(alpha_ri * num_words))
         for _ in range(num_new_per_technique):
             a_words = random_insertion(words, n_ri)
-            augmented_sentences.append(" ".join(a_words))
+            augmented_sentences.append(' '.join(a_words))
 
     # rs
     if alpha_rs > 0:
         n_rs = max(1, int(alpha_rs * num_words))
         for _ in range(num_new_per_technique):
             a_words = random_swap(words, n_rs)
-            augmented_sentences.append(" ".join(a_words))
+            augmented_sentences.append(' '.join(a_words))
 
     # rd
     if p_rd > 0:
         for _ in range(num_new_per_technique):
             a_words = random_deletion(words, p_rd)
-            augmented_sentences.append(" ".join(a_words))
+            augmented_sentences.append(' '.join(a_words))
 
     augmented_sentences = [get_only_chars(sentence) for sentence in augmented_sentences]
     shuffle(augmented_sentences)

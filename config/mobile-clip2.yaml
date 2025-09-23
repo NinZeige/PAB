@@ -63,10 +63,10 @@ load_pretrained: True
 
 max_words: 77
 max_tokens: 77
-eda_p: 1
+eda_p: 1.0
 erasing_p: 0.6
 
-batch_size_train: 22
+batch_size_train: 160
 batch_size_test: 22
 batch_size_test_text: 150
 
@@ -82,8 +82,8 @@ skipgram_prb: 0.2
 skipgram_size: 3
 mask_whole_word: True
 
-optimizer: {opt: adamW, lr: 1e-4, weight_decay: 0.01, lr_mult: 2}
-schedular: {sched: step, lr: 1e-4, epochs: 15, num_warmup_steps: 500}
+optimizer: {opt: adamW, lr: 1e-6, weight_decay: 0.01, lr_mult: 2}
+scheduler: {sched: step, lr: 1e-6, epochs: 15, num_warmup_steps: 200}
 
 k_test: 128
 
