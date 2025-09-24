@@ -3,7 +3,8 @@ import unittest
 import torch
 
 from main import to_device
-from models import siglip2, siglip2cmp
+from models import siglip2
+from models.siglip2cmp import SigLIP2CMPConfig, SigLIP2CMP
 from dataset import create_dataset, create_loader
 
 
@@ -16,13 +17,15 @@ def load_config() -> dict[str, str | list[str]]:
 
 class TestSigLIP2CMPForward(unittest.TestCase):
     @staticmethod
-    def build_model(cfg, device: torch.device | str):
-        return siglip2cmp.SigLIP2CMP.build_model(cfg, device)
+    def build_model(cfg):
+        dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+        conf = SigLIP2CMPConfig.from_yaml_obj(cfg)
+        return SigLIP2CMP.build_model(conf, dev)
 
     def test_forward(self):
         cfg = load_config()
         dev = 'cuda' if torch.cuda.is_available() else 'cpu'
-        model, proc, tok = TestSigLIP2CMPForward.build_model(cfg, dev)
+        model, proc, tok = TestSigLIP2CMPForward.build_model(cfg)
         model.eval()
 
         _, test_set = create_dataset(cfg, None, True)
@@ -35,9 +38,9 @@ class TestSigLIP2CMPForward(unittest.TestCase):
         txt = to_device(txt, dev)
         idx = idx.to(dev)
 
-        output = model.forward(idx=idx, **img, **txt, return_loss=True)
+        output = model.forward(idx=idx, **img, **txt, return_loss=True)  # type: ignore
         self.assertTrue(output.loss is not None)
-        self.assertEqual(type(float(output.loss)), float)
+        self.assertEqual(type(float(output.loss)), float)  # type: ignore
 
 
 if __name__ == '__main__':

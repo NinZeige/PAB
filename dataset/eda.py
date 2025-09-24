@@ -4,6 +4,11 @@ import re
 import random
 from random import shuffle
 
+# for the first time you use wordnet
+# import nltk
+# nltk.download('wordnet')
+from nltk.corpus import wordnet
+
 random.seed(1)
 
 # stop words list
@@ -165,11 +170,6 @@ def get_only_chars(line):
 # Synonym replacement
 # Replace n words in the sentence with synonyms from wordnet
 ########################################################################
-
-# for the first time you use wordnet
-# import nltk
-# nltk.download('wordnet')
-from nltk.corpus import wordnet
 
 
 def synonym_replacement(words, n):

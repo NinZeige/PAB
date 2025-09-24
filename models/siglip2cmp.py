@@ -20,29 +20,56 @@ class SigLIP2CMPOutput:
     text_feat: Optional[torch.Tensor] = None
 
 
+@dataclass
+class SigLIP2CMPConfig:
+    siglip_pretrained: Optional[Path]
+    bert_conf: BertConfig
+    siglip_loss_coeff: float = 0.4
+    itm_loss_coeff: float = 0.6
+    label_smooth: float = 0.2
+
+    @staticmethod
+    def from_yaml_obj(obj: dict[str, str | int | object]):
+        siglip_pretrained = obj['siglip_pretrained']
+        label_smooth = obj['label_smooth']
+        bert_conf_file = obj['text_config']
+
+        assert isinstance(siglip_pretrained, str)
+        assert isinstance(label_smooth, float)
+        assert isinstance(bert_conf_file, str)
+
+        bert_conf = BertConfig.from_json_file(Path(bert_conf_file))
+
+        return SigLIP2CMPConfig(
+            siglip_pretrained=Path(siglip_pretrained),
+            bert_conf=bert_conf,
+            label_smooth=label_smooth,
+        )
+
+
 class SigLIP2CMP(nn.Module):
     MODEL_NAME = 'google/siglip2-base-patch16-naflex'
-    SIGLIP_LOSS_COEFF = 0.2
-    ITM_LOSS_COEFF = 0.8
+    SIGLIP_DIM = 768
 
     def __init__(
         self,
         siglip2: Siglip2Model,
-        cfg: dict[str, int | str | list[str]],
-        embed_dim: int = 768,
-        itm_hidden: int = 256,
+        conf: SigLIP2CMPConfig,
     ):
         """
-        `embed_dim`: SigLIP2 输出的特征向量维度
+        Args:
+        siglip2: SigLIP2的模型本身，使用`models.siglip2`
         """
         super().__init__()
         self.siglip2 = siglip2
         self.device = self.siglip2.device
-        self.bert = build_bert(config=cfg, vision_width=embed_dim)
-        self.epsilon = cfg['label_smooth']
-        self.embed_dim = embed_dim
+        self.bert = SigLIP2CMP.build_bert(conf.bert_conf)
+        self.epsilon = conf.label_smooth
+        self.siglip_loss_coeff = conf.siglip_loss_coeff
+        self.itm_loss_coeff = conf.itm_loss_coeff
+        self.conf = conf
 
-        input_dim = embed_dim
+        input_dim = SigLIP2CMP.SIGLIP_DIM
         output_dim = 2
         self.itm_head = nn.Sequential(
             nn.Linear(input_dim, input_dim * 2),
@@ -51,17 +78,27 @@ class SigLIP2CMP(nn.Module):
             nn.Linear(input_dim * 2, output_dim),
         )
 
-        tau_init = float(cfg['temp'])  # type: ignore
-        logit_scale_init = 1.0 / tau_init  # 采用同CLIP的对数方式
-        self.logit_scale = nn.Parameter(
-            torch.log(torch.tensor(logit_scale_init, device=self.device))
-        )
+        self.text_proj = SigLIP2CMP.feature_mapping(input_dim, input_dim, 0.4)
+        self.image_proj = SigLIP2CMP.feature_mapping(input_dim, input_dim, 0.4)
+
+    @staticmethod
+    def verify_bert_conf(bert_conf: BertConfig):
+        """
+        对用于初始化的BertConfig进行验证
+        """
+        if bert_conf.encoder_width != SigLIP2CMP.SIGLIP_DIM:
+            raise ValueError(
+                f'Invalid BERT encoder width: {bert_conf.encoder_width}, expected: {SigLIP2CMP.SIGLIP_DIM}'
+            )
 
     @staticmethod
     def build_model(
-        config, device: torch.device | str, siglip2ckpt: Path | None = None
+        config: SigLIP2CMPConfig,
+        device: torch.device | str,
     ):
-        sigmodel, proc, tokenizer = siglip2.build_model(device, local_file=siglip2ckpt)
+        sigmodel, proc, tokenizer = siglip2.build_model(
+            device, local_file=config.siglip_pretrained
+        )
         model = SigLIP2CMP(sigmodel, config).to(device)
         return model, proc, tokenizer
 
@@ -69,6 +106,18 @@ class SigLIP2CMP(nn.Module):
     def from_pretrained(siglip2_ckpt: Path):
         raise NotImplementedError()
 
+    @staticmethod
+    def build_bert(config: BertConfig):
+        bert = BertForMaskedLM.from_pretrained(
+            pretrained_model_name_or_path=config.name_or_path,
+            config=config,
+            output_loading_info=False,
+            local_files_only=True,
+        )
+        p = bert.cls.predictions.decoder.bias
+        bert.cls.predictions.decoder.bias = nn.Parameter(torch.zeros(p.shape))
+
+        return bert
 
     def forward(
         self,
@@ -88,7 +137,7 @@ class SigLIP2CMP(nn.Module):
             spatial_shapes=spatial_shapes,
             attention_mask=attention_mask,
             position_ids=position_ids,
-            return_loss=return_loss,
+            return_loss=False,
             output_hidden_states=True,
         )
         dev = self.siglip2.device
@@ -98,14 +147,19 @@ class SigLIP2CMP(nn.Module):
         image_atts = torch.ones(image_embeds.shape[:2], device=dev)
         text_embeds: torch.FloatTensor = sigout.text_model_output.hidden_states[-1]  # type: ignore
         text_feat = sigout.text_embeds
-        text_atts = attention_mask # CMP的做法
+        text_atts: torch.Tensor
+        if attention_mask is not None:
+            text_atts = attention_mask  # CMP的做法
+        else:
+            text_atts = torch.ones(text_embeds.shape[:2], device=dev)
 
         # Loss Calculation
         loss: Optional[torch.Tensor] = None
         if return_loss is not None and return_loss:
-            assert sigout.loss is not None
-            loss = torch.tensor(0.0)
-            loss += sigout.loss * self.SIGLIP_LOSS_COEFF
+            loss = torch.tensor(0.0, device=dev)
+            if sigout.loss:
+                loss += sigout.loss * self.siglip_loss_coeff
+
             loss += (
                 self.get_matching_loss(
                     image_embeds=image_embeds,
@@ -116,7 +170,7 @@ class SigLIP2CMP(nn.Module):
                     text_feat=text_feat,
                     idx=idx,
                 )
-                * self.ITM_LOSS_COEFF
+                * self.itm_loss_coeff
             )
 
         output = SigLIP2CMPOutput(
@@ -170,7 +224,7 @@ class SigLIP2CMP(nn.Module):
         text_feat = F.normalize(text_feat, dim=-1)
 
         with torch.no_grad():
-            logit_scale = self.logit_scale.exp().clamp(1e-3, 100)
+            logit_scale = self.siglip2.logit_scale.exp().clamp(1e-3, 100)
             sim_i2t = image_feat @ text_feat.t() * logit_scale
             sim_t2i = text_feat @ image_feat.t() * logit_scale
             weights_i2t = F.softmax(sim_i2t, dim=1) + 1e-5
@@ -227,25 +281,21 @@ class SigLIP2CMP(nn.Module):
 
         return itm_loss
 
+    @staticmethod
+    def feature_mapping(input_dim: int, output_dim: int, dropout_p: float = 0.0):
+        from torch.nn import init
 
-def build_bert(config, vision_width):
-    config_text = BertConfig.from_json_file(config['text_config'])
-    config_text.encoder_width = vision_width
-    bert, msg = BertForMaskedLM.from_pretrained(
-        config['text_encoder'],
-        config=config_text,
-        output_loading_info=True,
-        local_files_only=True,
-    )
-    if config['load_params']:
-        print('build_text_encoder: load bert ====>')
-        for k, v in msg.items():
-            print(f'{k}: {sorted(v)}')
+        mlp = nn.Sequential(
+            nn.BatchNorm1d(input_dim),
+            nn.Dropout(p=dropout_p),
+            nn.Linear(input_dim, output_dim),
+        )
+        assert isinstance(mlp[2].weight.data, torch.Tensor)
+        assert isinstance(mlp[2].bias.data, torch.Tensor)
 
-    p = bert.cls.predictions.decoder.bias
-    bert.cls.predictions.decoder.bias = nn.Parameter(torch.zeros(p.shape))
-
-    return bert
+        init.normal_(mlp[2].weight.data, std=0.00001)
+        init.constant_(mlp[2].bias.data, 0.0)
+        return mlp
 
 
 __all__ = [

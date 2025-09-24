@@ -4,10 +4,10 @@ from pathlib import Path
 import logging
 
 from main import to_device
+from models import siglip2, siglip2cmp
 
 MODEL_NAME = 'google/siglip2-base-patch16-naflex'
 DEVICE = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-from models import siglip2, siglip2cmp
 
 
 def load_config() -> dict[str, str | list[str]]:
@@ -53,22 +53,6 @@ def load_single_batch(processor, tokenizer, device=torch.device | str):
 
 
 class TestDataloader(unittest.TestCase):
-    def test_infer(self):
-        from PIL import Image
-        import os
-
-        model, proc, tokenizer = siglip2.build_model(DEVICE)
-        PAB_ROOT = Path(os.environ['PABROOT'])
-
-        TEST_FILE = PAB_ROOT / 'test' / '0.jpg'
-
-        [img_input, txt_input] = [to_device(x, DEVICE) for x in [img_input, txt_input]]
-
-        img_feat = model.get_image_features(**img_input)
-        _ = model(**txt_input, **img_input, return_loss=True)
-        self.assertTrue(isinstance(img_feat, torch.Tensor))
-        self.assertEqual(img_feat.shape, torch.Size((1, 768)))
-
     def test_load(self):
         from dataset import create_dataset, create_loader
 

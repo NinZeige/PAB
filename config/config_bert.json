@@ -1,4 +1,5 @@
 {
+  "name_or_path": "/root/autodl-tmp/saved_model/pretrained/bert-base-uncased",
   "architectures": [
     "BertForMaskedLM"
   ],
@@ -17,5 +18,5 @@
   "type_vocab_size": 2,
   "vocab_size": 30522,
   "fusion_layer": 6,
-  "encoder_width": 1024
+  "encoder_width": 768
 }

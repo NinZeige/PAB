@@ -11,16 +11,16 @@ train_file:  [
   'annotation/train/attr_6.json', 'annotation/train/attr_7.json',
   'annotation/train/attr_8.json', 'annotation/train/attr_9.json',
 
-  'annotation/train/attr_10.json', 'annotation/train/attr_11.json',
-  'annotation/train/attr_12.json', 'annotation/train/attr_13.json',
-  'annotation/train/attr_14.json', 'annotation/train/attr_15.json',
-  'annotation/train/attr_16.json', 'annotation/train/attr_17.json',
-  'annotation/train/attr_18.json', 'annotation/train/attr_19.json',
+  # 'annotation/train/attr_10.json', 'annotation/train/attr_11.json',
+  # 'annotation/train/attr_12.json', 'annotation/train/attr_13.json',
+  # 'annotation/train/attr_14.json', 'annotation/train/attr_15.json',
+  # 'annotation/train/attr_16.json', 'annotation/train/attr_17.json',
+  # 'annotation/train/attr_18.json', 'annotation/train/attr_19.json',
 
-  'annotation/train/attr_20.json', 'annotation/train/attr_21.json',
-  'annotation/train/attr_22.json', 'annotation/train/attr_23.json',
-  'annotation/train/attr_24.json', 'annotation/train/attr_25.json',
-  'annotation/train/attr_26.json', 'annotation/train/attr_27.json',
+  # 'annotation/train/attr_20.json', 'annotation/train/attr_21.json',
+  # 'annotation/train/attr_22.json', 'annotation/train/attr_23.json',
+  # 'annotation/train/attr_24.json', 'annotation/train/attr_25.json',
+  # 'annotation/train/attr_26.json', 'annotation/train/attr_27.json',
   # 'annotation/train/attr_28.json', 'annotation/train/attr_29.json',
 
   # 'annotation/train/attr_30.json', 'annotation/train/attr_31.json',
@@ -42,10 +42,10 @@ train_file:  [
   # 'annotation/train/attr_58.json', 'annotation/train/attr_59.json',
 
   # 'annotation/train/attr_60.json', 'annotation/train/attr_61.json',
-  'annotation/train/attr_62.json', 'annotation/train/attr_63.json',
-  'annotation/train/attr_64.json', 'annotation/train/attr_65.json',
-  'annotation/train/attr_66.json', 'annotation/train/attr_67.json',
-  'annotation/train/attr_68.json', 'annotation/train/attr_69.json',
+  # 'annotation/train/attr_62.json', 'annotation/train/attr_63.json',
+  # 'annotation/train/attr_64.json', 'annotation/train/attr_65.json',
+  # 'annotation/train/attr_66.json', 'annotation/train/attr_67.json',
+  # 'annotation/train/attr_68.json', 'annotation/train/attr_69.json',
 
   # 'annotation/train/attr_70.json', 'annotation/train/attr_71.json',
   # 'annotation/train/attr_72.json', 'annotation/train/attr_73.json',
@@ -55,7 +55,7 @@ train_file:  [
 ## Text Encoder
 text_config: 'config/config_bert.json'
 text_encoder: '/root/autodl-tmp/saved_model/pretrained/bert-base-uncased'
-
+siglip_pretrained: '/root/autodl-tmp/saved_model/siglip2/siglip2-origin-full-bs640.pt'
 
 ## Image Encoder
 h: 224
@@ -72,7 +72,7 @@ erasing_p: 0.6
 
 # SigLIP用大Batch的效果可能更好
 batch_size_train: 160
-batch_size_test: 22
+batch_size_test: 120
 batch_size_test_text: 150
 batch_size_test_text: 150
 
@@ -88,8 +88,8 @@ skipgram_prb: 0.2
 skipgram_size: 3
 mask_whole_word: True
 
-optimizer: {opt: adamW, lr: 1e-5, weight_decay: 0.01, lr_mult: 2}
-scheduler: {sched: step, lr: 1e-5, epochs: 15, num_warmup_steps: 500}
+optimizer: {opt: adamW, siglip_lr: 0.0, mlp_lr: 2e-4, bert_lr: 1e-6, itm_lr: 2e-4, weight_decay: 0.01}
+scheduler: {sched: step, lr: 1e-4, epochs: 15, num_warmup_steps: 500}
 
 k_test: 128
 

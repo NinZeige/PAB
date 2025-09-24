@@ -9,7 +9,7 @@ from rich.table import Table, Column
 import torch
 from torch.optim import AdamW
 from torch.utils.data import DataLoader
-from transformers import get_cosine_schedule_with_warmup, Siglip2Model
+from transformers import get_cosine_schedule_with_warmup
 
 from dataset import create_dataset, create_loader
 from evaluate import evaluate_once
@@ -18,7 +18,45 @@ from models.siglip2 import (
     make_train_collate_fn,
     save_ckpt,
 )
-from models.siglip2cmp import SigLIP2CMP
+from models.siglip2cmp import SigLIP2CMP, SigLIP2CMPConfig
+
+
+def build_model(yaml_obj):
+    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    conf = SigLIP2CMPConfig.from_yaml_obj(yaml_obj)
+    return SigLIP2CMP.build_model(conf, dev)
+
+
+def build_optim(obj, model: SigLIP2CMP):
+    params = {
+        'siglip_lr': obj['siglip_lr'],
+        'mlp_lr': obj['mlp_lr'],
+        'bert_lr': obj['bert_lr'],
+        'itm_lr': obj['itm_lr'],
+        'weight_decay': obj['weight_decay'],
+    }
+    params = {k: float(v) for k, v in params.items()}
+
+    optim = AdamW(
+        [
+            {
+                'params': model.siglip2.parameters(),
+                'lr': params['siglip_lr'],
+            },  # SigLIP应该给低学习率，避免早期训练参数过大破坏SigLIP的预训练参数
+            {
+                'params': list(model.text_proj.parameters())
+                + list(model.image_proj.parameters()),
+                'lr': params['mlp_lr'],
+            },
+            {'params': model.itm_head.parameters(), 'lr': params['itm_lr']},
+            {'params': model.bert.parameters(), 'lr': params['bert_lr']},
+        ],
+        weight_decay=params['weight_decay'],
+        betas=(0.9, 0.98),
+        eps=1e-8,
+        fused=True,
+    )
+    return optim
 
 
 def rich_table_setup():
@@ -32,18 +70,14 @@ def rich_table_setup():
 
 
 def evaluate_main(cfg: dict[str, str | list[str]]):
-    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-
-    ckpt = cfg.get('checkpoint', None)
-    if ckpt is not None:
-        ckpt = Path(ckpt)
-    model, processor, tokenizer = SigLIP2CMP.build_model(cfg, dev, siglip2ckpt=ckpt)
+    model, processor, tokenizer = build_model(cfg)
     model.eval()
 
     _, test_dataset = create_dataset(cfg, None, evaluate=True)
     loader = create_loader(
         test_dataset,
         batch_size=cfg['batch_size_test'],
+        num_worker=4,
         collate_fn=make_eval_collate_fn(processor, tokenizer, cfg['max_words']),
     )
 
@@ -52,16 +86,17 @@ def evaluate_main(cfg: dict[str, str | list[str]]):
 
 
 def train_main(cfg: dict[str, int | str | list[str]]):
-    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     best_mAP = -1.0
+    assert isinstance(cfg['save_dir'], str)
+    assert isinstance(cfg['batch_size_train'], int)
+    assert isinstance(cfg['batch_size_test'], int)
 
-    ckpt = cfg.get('checkpoint', None)
-    if ckpt is not None:
-        ckpt = Path(ckpt)
-    model, processor, tokenizer = SigLIP2CMP.build_model(cfg, dev, siglip2ckpt=ckpt)
+    model, processor, tokenizer = build_model(cfg)
 
     # Prepare dataset
     train_dataset, test_dataset = create_dataset(cfg, None)
+    assert train_dataset is not None
+
     train_loader = create_loader(
         train_dataset,
         batch_size=cfg['batch_size_train'],
@@ -72,18 +107,12 @@ def train_main(cfg: dict[str, int | str | list[str]]):
     test_loader = create_loader(
         test_dataset,
         batch_size=cfg['batch_size_test'],
+        num_worker=4,
         collate_fn=make_eval_collate_fn(processor, tokenizer, cfg['max_words']),
     )
 
     max_epoch = cfg['scheduler']['epochs']
-    optim = AdamW(
-        [p for p in list(model.parameters()) if p.requires_grad],
-        lr=float(cfg['optimizer']['lr']),  # '1e-9' 会被yaml解析为`str`类型
-        weight_decay=cfg['optimizer']['weight_decay'],
-        betas=(0.9, 0.98),
-        eps=1e-8,
-        fused=True,
-    )
+    optim = build_optim(cfg['optimizer'], model)
 
     # Prepare Optimizers
     scaler = torch.GradScaler(
@@ -112,7 +141,7 @@ def train_main(cfg: dict[str, int | str | list[str]]):
         if cur_mAP > best_mAP:
             best_mAP = cur_mAP
             save_ckpt(
-                Path('output/best.pt'),
+                Path(cfg['save_dir']) / 'best.pt',
                 model,
                 optim,
                 scheduler,
@@ -173,11 +202,14 @@ def train_once(
         scheduler.step()
 
         running += loss.item()
-        cur_lr = optim.param_groups[0]['lr']
+        lrs = [optim.param_groups[i]['lr'] for i in range(4)]
 
         cnt = (cnt + 1) % INTV
-        if not cnt:
-            console.print(f'lr={cur_lr:.2e}  loss={loss.item():.4f}')
+        if not cnt and console is not None:
+            console.print(
+                f'siglip lr={lrs[0]:.2e} mlp lr={lrs[1]:.2e} \
+bert lr={lrs[2]:.2e} itm lr={lrs[2]:.2e} loss={loss.item():.4f}'
+            )
 
     return running / max(1, len(train_loader))
 
@@ -185,14 +217,15 @@ def train_once(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-e', '--evaluation', action='store_true')
-    parser.add_argument('--checkpoint')
+    parser.add_argument('--save-dir', required=True)
     args = parser.parse_args()
 
     with open('config/siglip2.yaml', 'r') as f:
         cfg = yaml.load(f.read(), yaml.Loader)
 
-    if args.checkpoint:
-        cfg['checkpoint'] = args.checkpoint
+    if args.save_dir:
+        cfg['save_dir'] = args.save_dir
+
     if args.evaluation:
         evaluate_main(cfg)
     else:

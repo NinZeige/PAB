@@ -38,7 +38,7 @@ def create_loader(
     collate_fn: Callable | None = None,
 ):
     assert isinstance(dataset, Dataset)  # 防止忘记处理 `create_dataset` 返回列表
-    shuffle = (sampler is not None) and is_train
+    shuffle = (sampler is None) and is_train
     drop_last = is_train
 
     loader = DataLoader(

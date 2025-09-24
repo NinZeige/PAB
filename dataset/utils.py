@@ -1,10 +1,8 @@
-import os
 import re
 import json
 import random
-import numpy as np
 
-from dataset.eda import *
+from dataset import eda
 
 
 def pre_caption(caption, max_words, is_eda=False, eda_p=0.5, re_text=True):
@@ -30,7 +28,7 @@ def pre_caption(caption, max_words, is_eda=False, eda_p=0.5, re_text=True):
 
     # eda
     if is_eda and random.random() < eda_p:
-        caption = eda(
+        caption = eda.eda(
             caption, alpha_sr=0.1, alpha_ri=0.1, alpha_rs=0.1, p_rd=0.1, num_aug=1
         )[0]
 

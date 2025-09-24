@@ -1153,7 +1153,7 @@ class BertModel(BertPreTrainedModel):
                 )
             encoder_hidden_shape = (encoder_batch_size, encoder_sequence_length)
 
-            if type(encoder_attention_mask) == list:
+            if isinstance(encoder_attention_mask, list):
                 encoder_extended_attention_mask = [
                     self.invert_attention_mask(mask) for mask in encoder_attention_mask
                 ]
