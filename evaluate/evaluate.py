@@ -52,7 +52,7 @@ def evaluate_itc(
         image_features.append(F.normalize(output.image_feat, dim=-1))
         text_features.append(F.normalize(output.text_feat, dim=-1))
         image_embeds.append(output.image_embeds)
-        text_embeds.append(output.image_embeds)
+        text_embeds.append(output.text_embeds)
 
     image_features = torch.cat(image_features, dim=0)
     text_features = torch.cat(text_features, dim=0)

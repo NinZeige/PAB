@@ -143,10 +143,10 @@ class SigLIP2CMP(nn.Module):
         dev = self.siglip2.device
 
         image_embeds: torch.FloatTensor = sigout.vision_model_output.hidden_states[-1]  # type: ignore
-        image_feat = sigout.image_embeds
+        image_feat = self.image_proj(sigout.image_embeds)
         image_atts = torch.ones(image_embeds.shape[:2], device=dev)
         text_embeds: torch.FloatTensor = sigout.text_model_output.hidden_states[-1]  # type: ignore
-        text_feat = sigout.text_embeds
+        text_feat = self.text_proj(sigout.text_embeds)
         text_atts: torch.Tensor
         if attention_mask is not None:
             text_atts = attention_mask  # CMP的做法
