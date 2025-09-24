@@ -143,15 +143,15 @@ class SigLIP2CMP(nn.Module):
         dev = self.siglip2.device
 
         image_embeds: torch.FloatTensor = sigout.vision_model_output.hidden_states[-1]  # type: ignore
-        image_feat = self.image_proj(sigout.image_embeds)
-        image_atts = torch.ones(image_embeds.shape[:2], device=dev)
+        bert_img_in = self.image_proj(sigout.image_embeds)
+        image_atts = torch.ones(image_embeds.shape[:2], device=dev, dtype=torch.long)
         text_embeds: torch.FloatTensor = sigout.text_model_output.hidden_states[-1]  # type: ignore
-        text_feat = self.text_proj(sigout.text_embeds)
+        bert_text_in = self.text_proj(sigout.text_embeds)
         text_atts: torch.Tensor
         if attention_mask is not None:
             text_atts = attention_mask  # CMP的做法
         else:
-            text_atts = torch.ones(text_embeds.shape[:2], device=dev)
+            text_atts = torch.ones(text_embeds.shape[:2], device=dev, dtype=torch.long)
 
         # Loss Calculation
         loss: Optional[torch.Tensor] = None
@@ -164,21 +164,26 @@ class SigLIP2CMP(nn.Module):
                 self.get_matching_loss(
                     image_embeds=image_embeds,
                     image_atts=image_atts,
-                    image_feat=image_feat,
+                    image_feat=bert_img_in,
                     text_embeds=text_embeds,
                     text_atts=text_atts,
-                    text_feat=text_feat,
+                    text_feat=bert_text_in,
                     idx=idx,
                 )
                 * self.itm_loss_coeff
             )
 
+        # !important: Sigout的Image-Embeds是输出的语义向量，维度是[BS, 768]; BERT需要的`Image-Embeds`是隐藏层的向量，容易混淆
+        assert (
+            sigout.text_embeds is not None
+            and sigout.text_embeds.shape == torch.Size((len(idx), 768))
+        )
         output = SigLIP2CMPOutput(
             loss=loss,
             image_embeds=image_embeds,
             text_embeds=text_embeds,
-            image_feat=image_feat,
-            text_feat=text_feat,
+            image_feat=sigout.image_embeds,
+            text_feat=sigout.text_embeds,
         )
         return output
 
@@ -224,7 +229,7 @@ class SigLIP2CMP(nn.Module):
         text_feat = F.normalize(text_feat, dim=-1)
 
         with torch.no_grad():
-            logit_scale = self.siglip2.logit_scale.exp().clamp(1e-3, 100)
+            logit_scale = self.siglip2.logit_scale.exp().clamp(1e-2, 100)
             sim_i2t = image_feat @ text_feat.t() * logit_scale
             sim_t2i = text_feat @ image_feat.t() * logit_scale
             weights_i2t = F.softmax(sim_i2t, dim=1) + 1e-5
@@ -290,11 +295,11 @@ class SigLIP2CMP(nn.Module):
             nn.LayerNorm(output_dim),
             nn.GELU(),
         )
-        assert isinstance(mlp[0].weight.data, torch.Tensor)
-        assert isinstance(mlp[0].bias.data, torch.Tensor)
+        assert isinstance(mlp[0].weight, torch.Tensor)
+        assert isinstance(mlp[0].bias, torch.Tensor)
 
-        init.normal_(mlp[0].weight.data, std=0.00001)
-        init.constant_(mlp[0].bias.data, 0.0)
+        init.xavier_normal_(mlp[0].weight)
+        init.zeros_(mlp[0].bias)
         return mlp
 
 

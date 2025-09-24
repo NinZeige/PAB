@@ -48,8 +48,8 @@ def build_optim(obj, model: SigLIP2CMP):
                 + list(model.image_proj.parameters()),
                 'lr': params['mlp_lr'],
             },
-            {'params': model.itm_head.parameters(), 'lr': params['itm_lr']},
             {'params': model.bert.parameters(), 'lr': params['bert_lr']},
+            {'params': model.itm_head.parameters(), 'lr': params['itm_lr']},
         ],
         weight_decay=params['weight_decay'],
         betas=(0.9, 0.98),
@@ -108,6 +108,7 @@ def train_main(cfg: dict[str, int | str | list[str]]):
         test_dataset,
         batch_size=cfg['batch_size_test'],
         num_worker=4,
+        is_train=False,
         collate_fn=make_eval_collate_fn(processor, tokenizer, cfg['max_words']),
     )
 
@@ -208,7 +209,7 @@ def train_once(
         if not cnt and console is not None:
             console.print(
                 f'siglip lr={lrs[0]:.2e} mlp lr={lrs[1]:.2e} \
-bert lr={lrs[2]:.2e} itm lr={lrs[2]:.2e} loss={loss.item():.4f}'
+bert lr={lrs[2]:.2e} itm lr={lrs[3]:.2e} loss={loss.item():.4f}'
             )
 
     return running / max(1, len(train_loader))

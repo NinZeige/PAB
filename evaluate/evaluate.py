@@ -111,6 +111,7 @@ def evaluation_itm(
     sims_matrix,
     image_embeds,
     text_embeds,
+    text_atts: Optional[torch.Tensor] = None,
     console: Console | None = None,
 ):
     model.eval()
@@ -118,7 +119,8 @@ def evaluation_itm(
     k_test = 128
 
     score_matrix_t2i = torch.full(sims_matrix.size(), 1000.0).to(device)
-    text_atts = torch.ones(text_embeds.shape[:2], device=device)
+    if not text_atts:
+        text_atts = torch.ones(text_embeds.shape[:2], device=device)
 
     for i, sims in enumerate(
         track(sims_matrix, description='Eval ITM', console=console)
