@@ -25,18 +25,21 @@ class SigLIP2CMPConfig:
     siglip_pretrained: Optional[Path]
     bert_conf: BertConfig
     siglip_loss_coeff: float = 0.4
-    itm_loss_coeff: float = 0.6
+    itm_loss_coeff: float = 1.0
     label_smooth: float = 0.2
+    freeze_siglip: bool = False
 
     @staticmethod
     def from_yaml_obj(obj: dict[str, str | int | object]):
         siglip_pretrained = obj['siglip_pretrained']
         label_smooth = obj['label_smooth']
         bert_conf_file = obj['text_config']
+        freeze_siglip = obj['freeze_siglip']
 
         assert isinstance(siglip_pretrained, str)
         assert isinstance(label_smooth, float)
         assert isinstance(bert_conf_file, str)
+        assert isinstance(freeze_siglip, bool)
 
         bert_conf = BertConfig.from_json_file(Path(bert_conf_file))
 
@@ -44,6 +47,7 @@ class SigLIP2CMPConfig:
             siglip_pretrained=Path(siglip_pretrained),
             bert_conf=bert_conf,
             label_smooth=label_smooth,
+            freeze_siglip=freeze_siglip,
         )
 
 
@@ -78,8 +82,12 @@ class SigLIP2CMP(nn.Module):
             nn.Linear(input_dim * 2, output_dim),
         )
 
-        self.text_proj = SigLIP2CMP.feature_mapping(input_dim, input_dim, 0.4)
-        self.image_proj = SigLIP2CMP.feature_mapping(input_dim, input_dim, 0.4)
+        if conf.freeze_siglip:
+            for p in self.siglip2.parameters():
+                p.requires_grad = False
+
+        self.text_proj = SigLIP2CMP.feature_mapping(input_dim, 1440, input_dim, 0.25)
+        self.image_proj = SigLIP2CMP.feature_mapping(input_dim, 1440, input_dim, 0.25)
 
     @staticmethod
     def verify_bert_conf(bert_conf: BertConfig):
@@ -143,10 +151,10 @@ class SigLIP2CMP(nn.Module):
         dev = self.siglip2.device
 
         image_embeds: torch.FloatTensor = sigout.vision_model_output.hidden_states[-1]  # type: ignore
-        bert_img_in = self.image_proj(sigout.image_embeds)
+        image_feat = sigout.image_embeds
         image_atts = torch.ones(image_embeds.shape[:2], device=dev, dtype=torch.long)
         text_embeds: torch.FloatTensor = sigout.text_model_output.hidden_states[-1]  # type: ignore
-        bert_text_in = self.text_proj(sigout.text_embeds)
+        text_feat = sigout.text_embeds
         text_atts: torch.Tensor
         if attention_mask is not None:
             text_atts = attention_mask  # CMP的做法
@@ -164,13 +172,18 @@ class SigLIP2CMP(nn.Module):
                 self.get_matching_loss(
                     image_embeds=image_embeds,
                     image_atts=image_atts,
-                    image_feat=bert_img_in,
+                    image_feat=image_feat,
                     text_embeds=text_embeds,
                     text_atts=text_atts,
-                    text_feat=bert_text_in,
+                    text_feat=text_feat,
                     idx=idx,
                 )
                 * self.itm_loss_coeff
+            )
+
+            loss += self.get_projected_contrastive_loss(
+                image_feat,
+                text_feat,
             )
 
         # !important: Sigout的Image-Embeds是输出的语义向量，维度是[BS, 768]; BERT需要的`Image-Embeds`是隐藏层的向量，容易混淆
@@ -182,8 +195,8 @@ class SigLIP2CMP(nn.Module):
             loss=loss,
             image_embeds=image_embeds,
             text_embeds=text_embeds,
-            image_feat=sigout.image_embeds,
-            text_feat=sigout.text_embeds,
+            image_feat=image_feat,
+            text_feat=text_feat,
         )
         return output
 
@@ -201,14 +214,35 @@ class SigLIP2CMP(nn.Module):
         text_atts,
     ):
         encoder = self.bert.bert
+        bert_text = self.text_proj(text_embeds)
+        bert_image = self.image_proj(image_embeds)
         return encoder(
-            encoder_embeds=text_embeds,
+            encoder_embeds=bert_text,
             attention_mask=text_atts,
-            encoder_hidden_states=image_embeds,
+            encoder_hidden_states=bert_image,
             encoder_attention_mask=image_atts,
             return_dict=True,
             mode='fusion',
         ).last_hidden_state
+
+    def get_projected_contrastive_loss(
+        self, image_feat: torch.Tensor, text_feat: torch.Tensor
+    ):
+        image_proj = F.normalize(self.image_proj(image_feat), dim=-1)
+        text_proj = F.normalize(self.text_proj(text_feat), dim=-1)
+        temp = self.siglip2.logit_scale.exp()
+
+        sim_i2t = image_proj @ text_proj.t() * temp
+        sim_t2i = sim_i2t.t()
+
+        loss_i2t = F.cross_entropy(
+            sim_i2t, torch.arange(len(sim_i2t), device=sim_i2t.device)
+        )
+        loss_t2i = F.cross_entropy(
+            sim_t2i, torch.arange(len(sim_t2i), device=sim_t2i.device)
+        )
+
+        return (loss_i2t + loss_t2i) * 0.5
 
     def get_matching_loss(
         self,
@@ -287,19 +321,27 @@ class SigLIP2CMP(nn.Module):
         return itm_loss
 
     @staticmethod
-    def feature_mapping(input_dim: int, output_dim: int, dropout_p: float = 0.0):
+    def feature_mapping(
+        input_dim: int, hidden: int, output_dim: int, dropout_p: float = 0.0
+    ):
         from torch.nn import init
 
         mlp = nn.Sequential(
-            nn.Linear(input_dim, output_dim),
-            nn.LayerNorm(output_dim),
+            nn.Linear(input_dim, hidden),
+            nn.LayerNorm(hidden),
             nn.GELU(),
+            nn.Dropout(p=dropout_p),
+            nn.Linear(hidden, output_dim),
+            nn.LayerNorm(output_dim),
         )
-        assert isinstance(mlp[0].weight, torch.Tensor)
-        assert isinstance(mlp[0].bias, torch.Tensor)
 
-        init.xavier_normal_(mlp[0].weight)
-        init.zeros_(mlp[0].bias)
+        linear_layer_indeces = [0, 4]
+        for i in linear_layer_indeces:
+            assert isinstance(mlp[i].weight, torch.Tensor)
+            assert isinstance(mlp[i].bias, torch.Tensor)
+
+            init.xavier_normal_(mlp[i].weight)
+            init.zeros_(mlp[i].bias)
         return mlp
 
 

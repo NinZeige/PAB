@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 
 import torch
+from torchvision.transforms import RandomHorizontalFlip
+
 from transformers import (
     Siglip2Model,
     Siglip2ImageProcessorFast,
@@ -30,7 +32,23 @@ def make_eval_collate_fn(
     """
     训练用的collate函数目前逻辑与评估相同，后续需要不同参数输入的时候再改动
     """
-    return make_train_collate_fn(processor, tokenizer, text_max_len)
+    transform = RandomHorizontalFlip()
+
+    def collate(batch):
+        images = [transform(b['image']) for b in batch]
+        texts = [b['caption'] for b in batch]
+        img_inputs = processor(images=images, return_tensors='pt')
+        txt_inputs = tokenizer(
+            texts,
+            truncation=True,
+            padding='max_length',
+            max_length=text_max_len,
+            return_tensors='pt',
+        )
+        indices = torch.tensor([b['index'] for b in batch], dtype=torch.long)
+        return img_inputs, txt_inputs, indices
+
+    return collate
 
 
 def make_train_collate_fn(
@@ -45,7 +63,6 @@ def make_train_collate_fn(
     def collate(batch):
         images = [b['image'] for b in batch]
         texts = [b['caption'] for b in batch]
-        # NaFlex/FixRes 通吃：一次性处理整批图像
         img_inputs = processor(images=images, return_tensors='pt')
         txt_inputs = tokenizer(
             texts,
