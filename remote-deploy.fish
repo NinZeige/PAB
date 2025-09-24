@@ -3,7 +3,7 @@
 set origin_path (status dirname)
 
 set -g ignore_expr '.venv/' \
-    __py__cache/ \
+    '__pycache__/' \
     '.git/' \
     'pyproject.toml' \
     'uv.lock' \

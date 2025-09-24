@@ -94,7 +94,6 @@ def train_main(cfg: dict[str, int | str | list[str]]):
         cfg['scheduler']['num_warmup_steps'],
         max_epoch * len(train_loader),
     )
-    breakpoint()
 
     # For `rich` pretty print
     table, console = rich_table_setup()

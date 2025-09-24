@@ -22,8 +22,8 @@ class SigLIP2CMPOutput:
 
 class SigLIP2CMP(nn.Module):
     MODEL_NAME = 'google/siglip2-base-patch16-naflex'
-    SIGLIP_LOSS_COEFF = 0.1
-    ITMHEAD_LOSS_COEFF = 0.9
+    SIGLIP_LOSS_COEFF = 0.2
+    ITM_LOSS_COEFF = 0.8
 
     def __init__(
         self,
@@ -39,8 +39,8 @@ class SigLIP2CMP(nn.Module):
         self.siglip2 = siglip2
         self.device = self.siglip2.device
         self.bert = build_bert(config=cfg, vision_width=embed_dim)
-        self.temp = nn.Parameter(torch.ones([]) * cfg['temp'])
         self.epsilon = cfg['label_smooth']
+        self.embed_dim = embed_dim
 
         input_dim = embed_dim
         output_dim = 2
@@ -49,6 +49,12 @@ class SigLIP2CMP(nn.Module):
             nn.LayerNorm(input_dim * 2),
             nn.GELU(),
             nn.Linear(input_dim * 2, output_dim),
+        )
+
+        tau_init = float(cfg['temp'])  # type: ignore
+        logit_scale_init = 1.0 / tau_init  # 采用同CLIP的对数方式
+        self.logit_scale = nn.Parameter(
+            torch.log(torch.tensor(logit_scale_init, device=self.device))
         )
 
     @staticmethod
@@ -62,6 +68,7 @@ class SigLIP2CMP(nn.Module):
     @staticmethod
     def from_pretrained(siglip2_ckpt: Path):
         raise NotImplementedError()
+
 
     def forward(
         self,
@@ -86,25 +93,30 @@ class SigLIP2CMP(nn.Module):
         )
         dev = self.siglip2.device
 
-        image_embeds = sigout.vision_model_output.hidden_states[-1]
+        image_embeds: torch.FloatTensor = sigout.vision_model_output.hidden_states[-1]  # type: ignore
         image_feat = sigout.image_embeds
         image_atts = torch.ones(image_embeds.shape[:2], device=dev)
-        text_embeds = sigout.text_model_output.hidden_states[-1]
+        text_embeds: torch.FloatTensor = sigout.text_model_output.hidden_states[-1]  # type: ignore
         text_feat = sigout.text_embeds
-        text_atts = torch.ones(text_embeds.shape[:2], device=dev)
+        text_atts = attention_mask # CMP的做法
 
         # Loss Calculation
-        loss: Optional[bool] = None
+        loss: Optional[torch.Tensor] = None
         if return_loss is not None and return_loss:
-            loss = sigout.loss
-            loss += self.get_matching_loss(
-                image_embeds=image_embeds,
-                image_atts=image_atts,
-                image_feat=image_feat,
-                text_embeds=text_embeds,
-                text_atts=text_atts,
-                text_feat=text_feat,
-                idx=idx,
+            assert sigout.loss is not None
+            loss = torch.tensor(0.0)
+            loss += sigout.loss * self.SIGLIP_LOSS_COEFF
+            loss += (
+                self.get_matching_loss(
+                    image_embeds=image_embeds,
+                    image_atts=image_atts,
+                    image_feat=image_feat,
+                    text_embeds=text_embeds,
+                    text_atts=text_atts,
+                    text_feat=text_feat,
+                    idx=idx,
+                )
+                * self.ITM_LOSS_COEFF
             )
 
         output = SigLIP2CMPOutput(
@@ -147,7 +159,7 @@ class SigLIP2CMP(nn.Module):
         text_embeds,
         text_atts,
         text_feat,
-        idx=None,
+        idx,
     ):
         """
         Matching Loss with in-batch hard negatives
@@ -158,8 +170,9 @@ class SigLIP2CMP(nn.Module):
         text_feat = F.normalize(text_feat, dim=-1)
 
         with torch.no_grad():
-            sim_i2t = image_feat @ text_feat.t() / self.temp
-            sim_t2i = text_feat @ image_feat.t() / self.temp
+            logit_scale = self.logit_scale.exp().clamp(1e-3, 100)
+            sim_i2t = image_feat @ text_feat.t() * logit_scale
+            sim_t2i = text_feat @ image_feat.t() * logit_scale
             weights_i2t = F.softmax(sim_i2t, dim=1) + 1e-5
             weights_t2i = F.softmax(sim_t2i, dim=1) + 1e-5
 
@@ -237,5 +250,5 @@ def build_bert(config, vision_width):
 
 __all__ = [
     'SigLIP2CMP',
-    'ITMOutput',
+    'SigLIP2CMPOutput',
 ]

@@ -25,7 +25,7 @@ def build_model(device: torch.device | str, local_file: Path | None = None):
 def make_eval_collate_fn(
     processor: Siglip2ImageProcessorFast,
     tokenizer: GemmaTokenizer,
-    text_max_len: int = None,
+    text_max_len: int | None = None,
 ):
     """
     训练用的collate函数目前逻辑与评估相同，后续需要不同参数输入的时候再改动
