@@ -76,7 +76,7 @@ batch_size_test: 120
 batch_size_test_text: 150
 batch_size_test_text: 150
 
-embed_dim: 2048
+embed_dim: 768
 itc_dp: 0.5
 temp: 0.07
 label_smooth: 0.2
