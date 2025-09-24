@@ -286,15 +286,15 @@ class SigLIP2CMP(nn.Module):
         from torch.nn import init
 
         mlp = nn.Sequential(
-            nn.BatchNorm1d(input_dim),
-            nn.Dropout(p=dropout_p),
             nn.Linear(input_dim, output_dim),
+            nn.LayerNorm(output_dim),
+            nn.GELU(),
         )
-        assert isinstance(mlp[2].weight.data, torch.Tensor)
-        assert isinstance(mlp[2].bias.data, torch.Tensor)
+        assert isinstance(mlp[0].weight.data, torch.Tensor)
+        assert isinstance(mlp[0].bias.data, torch.Tensor)
 
-        init.normal_(mlp[2].weight.data, std=0.00001)
-        init.constant_(mlp[2].bias.data, 0.0)
+        init.normal_(mlp[0].weight.data, std=0.00001)
+        init.constant_(mlp[0].bias.data, 0.0)
         return mlp
 
 

@@ -88,7 +88,7 @@ skipgram_prb: 0.2
 skipgram_size: 3
 mask_whole_word: True
 
-optimizer: {opt: adamW, siglip_lr: 0.0, mlp_lr: 2e-4, bert_lr: 1e-6, itm_lr: 2e-4, weight_decay: 0.01}
+optimizer: {opt: adamW, siglip_lr: 0.0, mlp_lr: 1e-3, bert_lr: 1e-5, itm_lr: 1e-3, weight_decay: 0.01}
 scheduler: {sched: step, lr: 1e-4, epochs: 15, num_warmup_steps: 500}
 
 k_test: 128
