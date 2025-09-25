@@ -27,6 +27,28 @@ def build_model(yaml_obj):
     return SigLIP2CMP.build_model(conf, dev)
 
 
+def from_checkpoint(yaml_obj):
+    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    ckpt = Path(yaml_obj['checkpoint'])
+
+    if not ckpt.is_file():
+        raise ValueError(f'Save position {ckpt} does not exist')
+
+    torch_obj = torch.load(ckpt)
+    model, proc, tok = SigLIP2CMP.build_model(
+        SigLIP2CMPConfig.from_yaml_obj(yaml_obj), dev
+    )
+    model.load_state_dict(torch_obj['model'])
+    best_mAP: float = torch_obj['best_mAP']
+
+    return (
+        model,
+        proc,
+        tok,
+        best_mAP,
+    )
+
+
 def build_optim(obj, model: SigLIP2CMP):
     params = {
         'siglip_lr': obj['siglip_lr'],
@@ -91,7 +113,10 @@ def train_main(cfg: dict[str, int | str | list[str]]):
     assert isinstance(cfg['batch_size_train'], int)
     assert isinstance(cfg['batch_size_test'], int)
 
-    model, processor, tokenizer = build_model(cfg)
+    if cfg['checkpoint'] is not None:
+        model, processor, tokenizer, best_mAP = from_checkpoint(cfg)
+    else:
+        model, processor, tokenizer = build_model(cfg)
 
     # Prepare dataset
     train_dataset, test_dataset = create_dataset(cfg, None)
@@ -218,14 +243,20 @@ bert lr={lrs[2]:.2e} itm lr={lrs[3]:.2e} loss={loss.item():.4f}'
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-e', '--evaluation', action='store_true')
+    parser.add_argument('--checkpoint')
     parser.add_argument('--save-dir', required=True)
     args = parser.parse_args()
 
     with open('config/siglip2.yaml', 'r') as f:
         cfg = yaml.load(f.read(), yaml.Loader)
 
+    if args.checkpoint:
+        cfg['checkpoint'] = args.checkpoint
+
     if args.save_dir:
         cfg['save_dir'] = args.save_dir
+        if not Path(args.save_dir).is_dir():
+            raise ValueError(f'Invalid saving position {args.save_dir}')
 
     if args.evaluation:
         evaluate_main(cfg)
