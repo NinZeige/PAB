@@ -8,22 +8,16 @@ from rich.progress import track
 from rich.table import Table
 from rich.console import Console
 
-from models.siglip2cmp import SigLIP2CMP
+from models.siglip2itm import Siglip2ITM
 
 
 def evaluate_once(
-    model: SigLIP2CMP, loader: DataLoader, table: Table, console: Console
+    model: Siglip2ITM, loader: DataLoader, table: Table, console: Console
 ):
     model.eval()
 
     sim_mat, image_embeds, text_embeds = evaluate_itc(model, loader, console=console)
-    score = evaluation_itm(
-        model,
-        sim_mat,
-        image_embeds,
-        text_embeds,
-        console=console,
-    )
+    score = model.get_matching_result(sim_mat, image_embeds, text_embeds)
     res = mAP(score, loader.dataset.g_pids, loader.dataset.q_pids)
 
     # Pretty Print
@@ -34,10 +28,11 @@ def evaluate_once(
 
 @torch.no_grad()
 def evaluate_itc(
-    model: SigLIP2CMP,
+    model: Siglip2ITM,
     loader: DataLoader,
     console: Console | None = None,
 ):
+    dev = 'cuda' if torch.cuda.is_available() else 'cpu'
     model.eval()
     image_features = []
     text_features = []
@@ -45,11 +40,11 @@ def evaluate_itc(
     text_embeds = []
 
     for imgs, text, idx in track(loader, description='Eval ITC', console=console):
-        imgs = {k: v.to(model.device) for k, v in imgs.items()}
-        text = {k: v.to(model.device) for k, v in text.items()}
-        idx = idx.to(model.device)
+        imgs = {k: v.to(dev) for k, v in imgs.items()}
+        text = {k: v.to(dev) for k, v in text.items()}
+        _ = idx.to(dev)
 
-        output = model.forward(idx=idx, **imgs, **text)
+        output = model.forward(**imgs, **text)
 
         image_features.append(F.normalize(output.image_feat, dim=-1))
         text_features.append(F.normalize(output.text_feat, dim=-1))
@@ -109,7 +104,7 @@ def mAP(scores_t2i: torch.Tensor, g_pids, q_pids) -> dict[str, float]:
 
 @torch.no_grad()
 def evaluation_itm(
-    model: SigLIP2CMP,
+    model: Siglip2ITM,
     sims_matrix,
     image_embeds,
     text_embeds,
@@ -118,7 +113,7 @@ def evaluation_itm(
 ):
     model.eval()
     device = model.device
-    k_test = 128
+    k_test = 8
 
     score_matrix_t2i = torch.full(sims_matrix.size(), 1000.0).to(device)
     if not text_atts:
@@ -139,7 +134,9 @@ def evaluation_itm(
             text_embeds=text_embeds[i].repeat(k_test, 1, 1),
             text_atts=text_atts[i].repeat(k_test, 1),
         )[:, 0, :]
-        score = model.itm_head(output)[:, 1]
+        score = model.itm_head(output)[
+            :, 1
+        ]  # 如果匹配，head_out[1]更大；反之未匹配时head_out[0]更大
         score_matrix_t2i[i, topk_idx] = score
 
     min_values, _ = torch.min(score_matrix_t2i, dim=1)

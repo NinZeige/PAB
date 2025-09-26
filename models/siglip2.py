@@ -12,15 +12,16 @@ from transformers import (
 )
 
 
-def build_model(device: torch.device | str, local_file: Path | None = None):
+def build_model(device: torch.device | str | None, local_file: Path | None = None):
     MODEL_NAME = 'google/siglip2-base-patch16-naflex'
     model = Siglip2Model.from_pretrained(MODEL_NAME)
     if local_file is not None:
         model.load_state_dict(load(local_file)['model'])
+    if device is not None:
+        model = model.to(device)  # type: ignore
     processor = Siglip2ImageProcessorFast.from_pretrained(MODEL_NAME)
     tokenizer: GemmaTokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
 
-    model = model.to(device)
     return model, processor, tokenizer
 
 

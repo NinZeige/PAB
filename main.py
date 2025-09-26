@@ -18,43 +18,45 @@ from models.siglip2 import (
     make_train_collate_fn,
     save_ckpt,
 )
-from models.siglip2cmp import SigLIP2CMP, SigLIP2CMPConfig
+from models.siglip2itm import Siglip2ITM, Siglip2ITMConfig
 
 
-def build_model(yaml_obj):
-    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    conf = SigLIP2CMPConfig.from_yaml_obj(yaml_obj)
-    return SigLIP2CMP.build_model(conf, dev)
+def build_model(siglip2_ckpt: str):
+    dev = 'cuda' if torch.cuda.is_available() else 'cpu'
+    conf = Siglip2ITMConfig(siglip2_ckpt)
+    model = Siglip2ITM(conf, dev)
+    proc = Siglip2ITM.get_processor()
+    tok = Siglip2ITM.get_tokenizer()
+    return model, proc, tok
 
 
 def from_checkpoint(yaml_obj):
-    dev = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    _ = 'cuda:0' if torch.cuda.is_available() else 'cpu'
     ckpt = Path(yaml_obj['checkpoint'])
 
     if not ckpt.is_file():
         raise ValueError(f'Save position {ckpt} does not exist')
 
     torch_obj = torch.load(ckpt)
-    model, proc, tok = SigLIP2CMP.build_model(
-        SigLIP2CMPConfig.from_yaml_obj(yaml_obj), dev
-    )
+    model, proc, tok = build_model(yaml_obj['siglip_pretrained'])
     model.load_state_dict(torch_obj['model'])
+
+    optim = build_optim(yaml_obj['optimizer'], model)
+    optim.load_state_dict(torch_obj['optimizer'])
     best_mAP: float = torch_obj['best_mAP']
 
     return (
         model,
         proc,
         tok,
+        optim,
         best_mAP,
     )
 
 
-def build_optim(obj, model: SigLIP2CMP):
+def build_optim(obj, model: Siglip2ITM):
     params = {
-        'siglip_lr': obj['siglip_lr'],
-        'mlp_lr': obj['mlp_lr'],
-        'bert_lr': obj['bert_lr'],
-        'itm_lr': obj['itm_lr'],
+        'basic_lr': obj['basic_lr'],
         'weight_decay': obj['weight_decay'],
     }
     params = {k: float(v) for k, v in params.items()}
@@ -62,16 +64,9 @@ def build_optim(obj, model: SigLIP2CMP):
     optim = AdamW(
         [
             {
-                'params': model.siglip2.parameters(),
-                'lr': params['siglip_lr'],
-            },  # SigLIP应该给低学习率，避免早期训练参数过大破坏SigLIP的预训练参数
-            {
-                'params': list(model.text_proj.parameters())
-                + list(model.image_proj.parameters()),
-                'lr': params['mlp_lr'],
+                'params': list(model.itm.parameters()),
+                'basic_lr': params['basic_lr'],
             },
-            {'params': model.bert.parameters(), 'lr': params['bert_lr']},
-            {'params': model.itm_head.parameters(), 'lr': params['itm_lr']},
         ],
         weight_decay=params['weight_decay'],
         betas=(0.9, 0.98),
@@ -92,7 +87,10 @@ def rich_table_setup():
 
 
 def evaluate_main(cfg: dict[str, str | list[str]]):
-    model, processor, tokenizer = build_model(cfg)
+    if 'checkpoint' in cfg and cfg['checkpoint'] is not None:
+        model, processor, tokenizer, *_ = from_checkpoint(cfg)
+    else:
+        model, processor, tokenizer = build_model(cfg['siglip_pretrained'])
     model.eval()
 
     _, test_dataset = create_dataset(cfg, None, evaluate=True)
@@ -113,10 +111,11 @@ def train_main(cfg: dict[str, int | str | list[str]]):
     assert isinstance(cfg['batch_size_train'], int)
     assert isinstance(cfg['batch_size_test'], int)
 
-    if cfg['checkpoint'] is not None:
-        model, processor, tokenizer, best_mAP = from_checkpoint(cfg)
+    optim = None
+    if 'checkpoint' in cfg and cfg['checkpoint'] is not None:
+        model, processor, tokenizer, optim, best_mAP = from_checkpoint(cfg)
     else:
-        model, processor, tokenizer = build_model(cfg)
+        model, processor, tokenizer = build_model(cfg['siglip_pretrained'])
 
     # Prepare dataset
     train_dataset, test_dataset = create_dataset(cfg, None)
@@ -138,11 +137,12 @@ def train_main(cfg: dict[str, int | str | list[str]]):
     )
 
     max_epoch = cfg['scheduler']['epochs']
-    optim = build_optim(cfg['optimizer'], model)
+    if optim is None:
+        optim = build_optim(cfg['optimizer'], model)
 
     # Prepare Optimizers
     scaler = torch.GradScaler(
-        device=model.device.type, enabled=torch.cuda.is_available()
+        device=next(model.parameters()).device.type, enabled=torch.cuda.is_available()
     )
     scheduler = get_cosine_schedule_with_warmup(
         optim,
@@ -186,7 +186,7 @@ def to_device(batch, device):
 
 
 def train_once(
-    model: SigLIP2CMP,
+    model: Siglip2ITM,
     train_loader: DataLoader,
     epoch_no: int,
     optim: torch.optim.Optimizer,
@@ -194,7 +194,7 @@ def train_once(
     scheduler,
     console: Console | None = None,
 ):
-    dev: torch.device = model.device
+    dev: torch.device = next(model.parameters()).device
     running = 0
     model.train()
 
@@ -208,7 +208,7 @@ def train_once(
 
         img = to_device(img, dev)
         txt = to_device(txt, dev)
-        idx = idx.to(dev)
+        _ = idx.to(dev)
 
         with torch.autocast(
             device_type=dev.type,
@@ -216,7 +216,7 @@ def train_once(
             enabled=torch.cuda.is_available(),
         ):
             # 直接用内置 loss（SigLIP 风格的 binary logistic 对比损失）
-            output = model.forward(idx=idx, **img, **txt, return_loss=True)
+            output = model.forward(**img, **txt, return_loss=True)
             loss = output.loss
 
         scaler.scale(loss).backward()
@@ -228,14 +228,11 @@ def train_once(
         scheduler.step()
 
         running += loss.item()
-        lrs = [optim.param_groups[i]['lr'] for i in range(4)]
+        lrs = [optim.param_groups[i]['lr'] for i in range(1)]
 
         cnt = (cnt + 1) % INTV
         if not cnt and console is not None:
-            console.print(
-                f'siglip lr={lrs[0]:.2e} mlp lr={lrs[1]:.2e} \
-bert lr={lrs[2]:.2e} itm lr={lrs[3]:.2e} loss={loss.item():.4f}'
-            )
+            console.print(f'lr={lrs[0]:.2e} loss={loss.item():.4f}')
 
     return running / max(1, len(train_loader))
 
@@ -247,7 +244,7 @@ def main():
     parser.add_argument('--save-dir', required=True)
     args = parser.parse_args()
 
-    with open('config/siglip2.yaml', 'r') as f:
+    with open('config/siglip2itm.yaml', 'r') as f:
         cfg = yaml.load(f.read(), yaml.Loader)
 
     if args.checkpoint:

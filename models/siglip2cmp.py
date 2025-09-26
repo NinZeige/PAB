@@ -303,19 +303,19 @@ class SigLIP2CMP(nn.Module):
             image_atts,
             text_embeds=text_embeds,
             text_atts=text_atts,
-        )[:, 0, :]
+        )[:, 0, :]  # [BS, BERT_OUT]
         cross_neg = self.get_cross_embeds(
             image_embeds_all,
             image_atts_all,
             text_embeds=text_embeds_all,
             text_atts=text_atts_all,
-        )[:, 0, :]
+        )[:, 0, :]  # [BS * 2, BERT_OUT]
 
-        output = self.itm_head(torch.cat([cross_pos, cross_neg], dim=0))
+        output = self.itm_head(torch.cat([cross_pos, cross_neg], dim=0))  # [BS * 3, 2]
         itm_labels = torch.cat(
             [torch.ones(bs, dtype=torch.long), torch.zeros(2 * bs, dtype=torch.long)],
             dim=0,
-        ).to(image_embeds.device)
+        ).to(image_embeds.device)  # [BS * 3]
         itm_loss = F.cross_entropy(output, itm_labels)
 
         return itm_loss
